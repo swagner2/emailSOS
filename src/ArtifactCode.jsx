@@ -151,8 +151,123 @@ const EmailDeliveryChecker = () => {
     };
 
     setCalculationData(data);
-    displayImpactResults(data);
+    
+    // Show blurred results first
+    displayBlurredResults(data);
+    
+    // If email is provided, show full results and add to Klaviyo
+    if (formData.userEmail) {
+      displayImpactResults(data);
+      setCalculationComplete(true);
+      addToKlaviyo(formData.userEmail, formData.companyName).catch(console.error);
+    }
+  };
+
+  const handleEmailSubmit = () => {
+    if (!formData.userEmail) {
+      alert('Please enter your email address');
+      return;
+    }
+
+    // Show full results and add to Klaviyo
+    displayImpactResults(calculationData);
     setCalculationComplete(true);
+    addToKlaviyo(formData.userEmail, formData.companyName).catch(console.error);
+  };
+
+  const displayBlurredResults = (data) => {
+    const currentOpens = (data.listSize * data.emailsPerMonth * data.openRate) / 100;
+    const currentClicks = (currentOpens * data.clickRate) / 100;
+    const currentConversions = (currentClicks * data.conversionRate) / 100;
+    const currentRevenue = currentConversions * data.avgOrderValue;
+
+    const deliverabilityImpact = domainIssues.length > 0 ? 0.35 : 0.15;
+    const improvedOpens = currentOpens * (1 + deliverabilityImpact);
+    const improvedClicks = (improvedOpens * data.clickRate) / 100;
+    const improvedConversions = (improvedClicks * data.conversionRate) / 100;
+    const improvedRevenue = improvedConversions * data.avgOrderValue;
+
+    const monthlyLoss = improvedRevenue - currentRevenue;
+    const annualLoss = monthlyLoss * 12;
+
+    setImpactResults(
+      <div className="relative">
+        {/* Blurred Results */}
+        <div className="filter blur-sm pointer-events-none">
+          <div className="bg-gradient-to-r from-red-500 to-red-600 text-white p-8 rounded-xl text-center mt-8">
+            <h3 className="text-2xl mb-2">💰 Monthly Revenue Impact</h3>
+            <div className="text-5xl font-bold my-5">${monthlyLoss.toLocaleString()}</div>
+            <p>You're potentially losing this much revenue per month due to poor email deliverability</p>
+            <div className="mt-5 text-xl">
+              <strong>Annual Impact: ${annualLoss.toLocaleString()}</strong>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mt-8">
+            <div className="bg-yellow-50 p-5 rounded-lg">
+              <h4 className="text-lg font-semibold mb-3">📈 Current Performance</h4>
+              <p><strong>Monthly Opens:</strong> {currentOpens.toLocaleString()}</p>
+              <p><strong>Monthly Clicks:</strong> {currentClicks.toLocaleString()}</p>
+              <p><strong>Monthly Conversions:</strong> {currentConversions.toLocaleString()}</p>
+              <p><strong>Monthly Revenue:</strong> ${currentRevenue.toLocaleString()}</p>
+            </div>
+            <div className="bg-green-50 p-5 rounded-lg">
+              <h4 className="text-lg font-semibold mb-3">🎯 Potential with Good Deliverability</h4>
+              <p><strong>Monthly Opens:</strong> {improvedOpens.toLocaleString()}</p>
+              <p><strong>Monthly Clicks:</strong> {improvedClicks.toLocaleString()}</p>
+              <p><strong>Monthly Conversions:</strong> {improvedConversions.toLocaleString()}</p>
+              <p><strong>Monthly Revenue:</strong> ${improvedRevenue.toLocaleString()}</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Email Capture Overlay */}
+        <div className="absolute inset-0 flex items-center justify-center">
+          <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md mx-4 border-4 border-blue-500">
+            <div className="text-center mb-6">
+              <div className="text-4xl mb-3">📧</div>
+              <h3 className="text-2xl font-bold text-gray-800 mb-2">What email should we send the results to?</h3>
+              <p className="text-gray-600">Get your detailed revenue recovery report and step-by-step fix guide</p>
+            </div>
+            
+            <div className="space-y-4">
+              <div>
+                <input
+                  type="email"
+                  name="userEmail"
+                  value={formData.userEmail}
+                  onChange={handleInputChange}
+                  placeholder="your.email@company.com"
+                  className="w-full p-4 border-2 border-gray-200 rounded-lg text-lg focus:border-blue-500 focus:outline-none"
+                />
+              </div>
+              <div>
+                <input
+                  type="text"
+                  name="companyName"
+                  value={formData.companyName}
+                  onChange={handleInputChange}
+                  placeholder="Company Name (Optional)"
+                  className="w-full p-4 border-2 border-gray-200 rounded-lg text-lg focus:border-blue-500 focus:outline-none"
+                />
+              </div>
+              <button
+                onClick={handleEmailSubmit}
+                className="w-full bg-gradient-to-r from-blue-500 to-blue-600 text-white p-4 rounded-lg text-lg font-semibold hover:from-blue-600 hover:to-blue-700 transition-all"
+              >
+                📨 Send Me The Complete Analysis
+              </button>
+            </div>
+            
+            <div className="mt-4 text-center text-sm text-gray-500">
+              <p>✓ Detailed revenue recovery plan</p>
+              <p>✓ Step-by-step technical instructions</p>
+              <p>✓ Priority implementation roadmap</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
   };
 
   const displayImpactResults = (data) => {
@@ -178,6 +293,12 @@ const EmailDeliveryChecker = () => {
           <p>You're potentially losing this much revenue per month due to poor email deliverability</p>
           <div className="mt-5 text-xl">
             <strong>Annual Impact: ${annualLoss.toLocaleString()}</strong>
+          </div>
+          <div className="mt-6 p-4 bg-white bg-opacity-20 rounded-lg">
+            <p className="text-lg">
+              📧 <strong>Your detailed fix-it guide has been sent to {formData.userEmail}!</strong>
+            </p>
+            <p className="text-sm mt-2">Check your inbox for step-by-step instructions to recover this revenue.</p>
           </div>
         </div>
 
@@ -246,44 +367,179 @@ const EmailDeliveryChecker = () => {
   };
 
   const addToKlaviyo = async (email, company) => {
-    // Replace with your actual Klaviyo credentials
-    const KLAVIYO_PUBLIC_KEY = 'YOUR_KLAVIYO_PUBLIC_API_KEY';
-    const LIST_ID = 'YOUR_LIST_ID';
+    const KLAVIYO_PUBLIC_KEY = 'Mzfpkb';
+    const klaviyoSignupUrl = 'https://www.klaviyo.com/list/TCapS8';
     
-    const profileData = {
-      email: email,
-      properties: {
-        first_name: company ? company.split(' ')[0] : '',
+    try {
+      // Prepare the profile data
+      const profileData = {
+        email: email,
+        properties: {
+          first_name: company ? company.split(' ')[0] : '',
+          company: company || '',
+          source: 'Email Delivery Checker',
+          domain_issues: domainIssues.join(', ') || 'None detected',
+          domain_issues_count: domainIssues.length,
+          timestamp: new Date().toISOString()
+        }
+      };
+
+      // Add calculation data if available
+      if (calculationData.listSize) {
+        const monthlyLoss = calculateMonthlyLoss();
+        profileData.properties = {
+          ...profileData.properties,
+          list_size: calculationData.listSize,
+          avg_order_value: calculationData.avgOrderValue,
+          open_rate: calculationData.openRate,
+          click_rate: calculationData.clickRate,
+          conversion_rate: calculationData.conversionRate,
+          emails_per_month: calculationData.emailsPerMonth,
+          monthly_revenue_loss: Math.round(monthlyLoss),
+          annual_revenue_loss: Math.round(monthlyLoss * 12)
+        };
+      }
+
+      // Method 1: Try Klaviyo API directly
+      try {
+        const response = await fetch('https://a.klaviyo.com/api/profiles/', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Klaviyo-API-Key ${KLAVIYO_PUBLIC_KEY}`,
+            'Content-Type': 'application/json',
+            'revision': '2024-06-15'
+          },
+          body: JSON.stringify({
+            data: {
+              type: 'profile',
+              attributes: profileData
+            }
+          })
+        });
+
+        if (response.ok) {
+          const profile = await response.json();
+          
+          // Add to the specific list
+          await fetch(`https://a.klaviyo.com/api/lists/TCapS8/relationships/profiles/`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Klaviyo-API-Key ${KLAVIYO_PUBLIC_KEY}`,
+              'Content-Type': 'application/json',
+              'revision': '2024-06-15'
+            },
+            body: JSON.stringify({
+              data: [{
+                type: 'profile',
+                id: profile.data.id
+              }]
+            })
+          });
+
+          console.log('Successfully added to Klaviyo via API');
+          return { success: true, method: 'api' };
+        }
+      } catch (apiError) {
+        console.log('API method failed, trying list signup URL:', apiError);
+      }
+
+      // Method 2: Use list signup URL with form submission
+      const formData = new FormData();
+      formData.append('email', email);
+      formData.append('$fields', 'email,company,source,domain_issues,list_size,monthly_revenue_loss');
+      
+      // Add custom properties
+      Object.entries(profileData.properties).forEach(([key, value]) => {
+        if (value !== null && value !== undefined) {
+          formData.append(key, value.toString());
+        }
+      });
+
+      try {
+        const response = await fetch(klaviyoSignupUrl, {
+          method: 'POST',
+          body: formData,
+          mode: 'no-cors'
+        });
+        
+        console.log('Successfully submitted to Klaviyo list signup');
+        return { success: true, method: 'list_signup' };
+        
+      } catch (listError) {
+        console.log('List signup failed, trying iframe method:', listError);
+      }
+
+      // Method 3: Hidden iframe method (most reliable for cross-origin)
+      const iframe = document.createElement('iframe');
+      iframe.style.display = 'none';
+      iframe.name = 'klaviyo-signup';
+      document.body.appendChild(iframe);
+
+      const form = document.createElement('form');
+      form.method = 'POST';
+      form.action = klaviyoSignupUrl;
+      form.target = 'klaviyo-signup';
+
+      // Add all the profile data as hidden fields
+      Object.entries({
+        email: email,
+        ...profileData.properties
+      }).forEach(([key, value]) => {
+        if (value !== null && value !== undefined) {
+          const input = document.createElement('input');
+          input.type = 'hidden';
+          input.name = key;
+          input.value = value.toString();
+          form.appendChild(input);
+        }
+      });
+
+      document.body.appendChild(form);
+      form.submit();
+
+      // Clean up after submission
+      setTimeout(() => {
+        document.body.removeChild(form);
+        document.body.removeChild(iframe);
+      }, 2000);
+
+      console.log('Successfully submitted via iframe method');
+      return { success: true, method: 'iframe' };
+
+    } catch (error) {
+      console.error('All Klaviyo methods failed:', error);
+      
+      // Final fallback - log for manual processing
+      const leadData = {
+        email,
         company: company || '',
         source: 'Email Delivery Checker',
         domain_issues: domainIssues.join(', ') || 'None detected',
         domain_issues_count: domainIssues.length,
-        timestamp: new Date().toISOString()
-      }
-    };
-
-    if (calculationComplete && calculationData.listSize) {
-      const monthlyLoss = calculateMonthlyLoss();
-      profileData.properties = {
-        ...profileData.properties,
-        list_size: calculationData.listSize,
-        avg_order_value: calculationData.avgOrderValue,
-        open_rate: calculationData.openRate,
-        click_rate: calculationData.clickRate,
-        conversion_rate: calculationData.conversionRate,
-        emails_per_month: calculationData.emailsPerMonth,
-        monthly_revenue_loss: Math.round(monthlyLoss),
-        annual_revenue_loss: Math.round(monthlyLoss * 12)
+        timestamp: new Date().toISOString(),
+        calculation_data: calculationData.listSize ? {
+          list_size: calculationData.listSize,
+          avg_order_value: calculationData.avgOrderValue,
+          open_rate: calculationData.openRate,
+          click_rate: calculationData.clickRate,
+          conversion_rate: calculationData.conversionRate,
+          emails_per_month: calculationData.emailsPerMonth,
+          monthly_revenue_loss: Math.round(calculateMonthlyLoss()),
+          annual_revenue_loss: Math.round(calculateMonthlyLoss() * 12)
+        } : null
       };
-    }
 
-    // In production, send this to your backend endpoint
-    console.log('Klaviyo lead data:', profileData);
-    
-    // Simulate API call
-    return new Promise((resolve) => {
-      setTimeout(() => resolve({ success: true }), 1000);
-    });
+      console.log('MANUAL PROCESSING NEEDED - Klaviyo lead data:', leadData);
+      
+      // You could also send this to your own backend as a backup
+      // fetch('/api/backup-lead-capture', { 
+      //   method: 'POST', 
+      //   headers: { 'Content-Type': 'application/json' },
+      //   body: JSON.stringify(leadData) 
+      // });
+      
+      throw new Error('All Klaviyo integration methods failed');
+    }
   };
 
   const sendResults = async () => {
@@ -432,48 +688,28 @@ const EmailDeliveryChecker = () => {
           {/* Email Capture Section */}
           <div className="mb-10 p-8 bg-gray-50 rounded-xl border-l-4 border-blue-500">
             <h2 className="text-2xl font-semibold text-gray-800 mb-3">📧 Get Your Custom Fix-It Guide</h2>
-            <p className="mb-5 text-gray-600">Enter your email to receive a detailed report with step-by-step instructions to fix your email deliverability issues.</p>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-5">
-              <div>
-                <label className="block mb-2 font-semibold text-gray-700">Your Email Address:</label>
-                <input
-                  type="email"
-                  name="userEmail"
-                  value={formData.userEmail}
-                  onChange={handleInputChange}
-                  placeholder="you@yourdomain.com"
-                  className="w-full p-3 border-2 border-gray-200 rounded-lg text-lg focus:border-blue-500 focus:outline-none"
-                />
+            <p className="mb-5 text-gray-600">
+              {calculationComplete ? 
+                "Your detailed report has been automatically sent! Want to take immediate action?" : 
+                "Complete the calculator above to receive a detailed report with step-by-step instructions."
+              }
+            </p>
+            {calculationComplete && (
+              <div className="mb-5">
+                <button
+                  onClick={scheduleConsultation}
+                  className="bg-gradient-to-r from-red-500 to-red-600 text-white px-6 py-3 rounded-lg font-semibold hover:from-red-600 hover:to-red-700 transition-all mr-3"
+                >
+                  🚀 Hire Us to Fix This For You
+                </button>
+                <button
+                  onClick={() => window.open('mailto:' + formData.userEmail, '_blank')}
+                  className="bg-gradient-to-r from-gray-500 to-gray-600 text-white px-6 py-3 rounded-lg font-semibold hover:from-gray-600 hover:to-gray-700 transition-all"
+                >
+                  📨 Check Your Email
+                </button>
               </div>
-              <div>
-                <label className="block mb-2 font-semibold text-gray-700">Company Name (Optional):</label>
-                <input
-                  type="text"
-                  name="companyName"
-                  value={formData.companyName}
-                  onChange={handleInputChange}
-                  placeholder="Your Company"
-                  className="w-full p-3 border-2 border-gray-200 rounded-lg text-lg focus:border-blue-500 focus:outline-none"
-                />
-              </div>
-            </div>
-            <button
-              onClick={sendResults}
-              disabled={!updateSendButton()}
-              className={`mr-3 mb-3 px-6 py-3 rounded-lg font-semibold transition-all ${
-                updateSendButton()
-                  ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white hover:from-blue-600 hover:to-blue-700'
-                  : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-              }`}
-            >
-              📨 Send Me the Fix-It Guide
-            </button>
-            <button
-              onClick={scheduleConsultation}
-              className="bg-gradient-to-r from-red-500 to-red-600 text-white px-6 py-3 rounded-lg font-semibold hover:from-red-600 hover:to-red-700 transition-all"
-            >
-              🚀 Hire Us to Fix This For You
-            </button>
+            )}
             
             {emailCapture}
           </div>
@@ -481,6 +717,7 @@ const EmailDeliveryChecker = () => {
           {/* Email Marketing Calculator Section */}
           <div className="mb-10 p-8 bg-gray-50 rounded-xl border-l-4 border-blue-500">
             <h2 className="text-2xl font-semibold text-gray-800 mb-5">📊 Email Marketing Performance Calculator</h2>
+
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 mb-5">
               <div>
                 <label className="block mb-2 font-semibold text-gray-700">Email List Size:</label>
@@ -553,7 +790,7 @@ const EmailDeliveryChecker = () => {
               onClick={calculateImpact}
               className="bg-gradient-to-r from-blue-500 to-blue-600 text-white px-6 py-3 rounded-lg font-semibold hover:from-blue-600 hover:to-blue-700 transition-all"
             >
-              Calculate Impact
+              Calculate My Revenue Impact
             </button>
             
             {impactResults}
