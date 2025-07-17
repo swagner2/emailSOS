@@ -35,10 +35,38 @@ const EmailDeliveryChecker = () => {
 
   const logToGoogleSheets = async (data) => {
     try {
-      // Google Apps Script Web App URL (replace with your actual URL)
-      const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzvN7mOucgh41Q06Qi09UuTxjIp8FtIjuZQTaCcJrFq9-mW8Ps7rFsVG5-s6aD2DudI/exec';
+      // Google Apps Script Web App URL - REPLACE WITH YOUR ACTUAL URL
+      const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyLT6sLwtHfElUgHEnpqJORhOGlImMgEYHXQvWrKh8/dev';
       
-      // Method 1: Google Apps Script (Recommended)
+      // Check if URL is configured
+      if (APPS_SCRIPT_URL.includes('YOUR_ACTUAL_SCRIPT_ID')) {
+        console.log('🔴 Google Apps Script URL not configured');
+        console.log('🔴 MANUAL GOOGLE SHEETS ENTRY NEEDED:');
+        console.table([{
+          Timestamp: data.timestamp || new Date().toISOString(),
+          Domain: data.domain || '',
+          Email: data.email || '',
+          Company: data.company || '',
+          'SPF Status': data.spf_status || '',
+          'DKIM Status': data.dkim_status || '',
+          'DMARC Status': data.dmarc_status || '',
+          'MX Status': data.mx_status || '',
+          'Domain Issues Count': data.domain_issues_count || 0,
+          'List Size': data.list_size || '',
+          'Avg Order Value': data.avg_order_value || '',
+          'Open Rate': data.open_rate || '',
+          'Click Rate': data.click_rate || '',
+          'Conversion Rate': data.conversion_rate || '',
+          'Emails Per Month': data.emails_per_month || '',
+          'Monthly Revenue Loss': data.monthly_revenue_loss || '',
+          'Annual Revenue Loss': data.annual_revenue_loss || '',
+          'List Type': data.list_type || '',
+          'Source': data.source || ''
+        }]);
+        return { success: false, error: 'Apps Script URL not configured' };
+      }
+      
+      // Method 1: Google Apps Script (Primary)
       try {
         const response = await fetch(APPS_SCRIPT_URL, {
           method: 'POST',
@@ -49,17 +77,17 @@ const EmailDeliveryChecker = () => {
         });
         
         const result = await response.json();
-        console.log('Google Sheets response:', result);
+        console.log('✅ Google Sheets response:', result);
         
         if (result.success) {
-          console.log('Data successfully logged to Google Sheets');
+          console.log('✅ Data successfully logged to Google Sheets');
           return { success: true, method: 'apps_script' };
         } else {
           throw new Error(result.error || 'Apps Script failed');
         }
         
       } catch (appsScriptError) {
-        console.log('Apps Script method failed:', appsScriptError);
+        console.log('❌ Apps Script method failed:', appsScriptError);
         
         // Method 2: Try direct Google Sheets API as fallback
         const SHEET_ID = '1txSIvvKuQj6bxKkoYqxBPadip9iPTam2G4yLvJRYTRM';
@@ -67,7 +95,7 @@ const EmailDeliveryChecker = () => {
         
         if (API_KEY && API_KEY !== 'YOUR_GOOGLE_API_KEY') {
           try {
-            const range = 'Sheet1!A:S'; // Adjust range as needed
+            const range = 'Sheet1!A:S';
             const valueInputOption = 'RAW';
             
             const values = [[
@@ -105,14 +133,14 @@ const EmailDeliveryChecker = () => {
             });
             
             if (response.ok) {
-              console.log('Data logged to Google Sheets via API');
+              console.log('✅ Data logged to Google Sheets via API');
               return { success: true, method: 'direct_api' };
             } else {
               const errorText = await response.text();
               throw new Error(`Google Sheets API failed: ${response.status} - ${errorText}`);
             }
           } catch (apiError) {
-            console.error('Google Sheets API failed:', apiError);
+            console.error('❌ Google Sheets API failed:', apiError);
             throw apiError;
           }
         } else {
@@ -121,11 +149,11 @@ const EmailDeliveryChecker = () => {
       }
       
     } catch (error) {
-      console.error('Failed to log to Google Sheets:', error);
+      console.error('❌ Failed to log to Google Sheets:', error);
       
       // Fallback: Log to console for manual entry
       console.log('🔴 MANUAL GOOGLE SHEETS ENTRY NEEDED:');
-      console.log('Copy this data to your Google Sheet:');
+      console.log('📋 Copy this data to your Google Sheet:');
       console.table([{
         Timestamp: data.timestamp || new Date().toISOString(),
         Domain: data.domain || '',
