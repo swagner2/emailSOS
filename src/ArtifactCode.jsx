@@ -74,7 +74,7 @@ const EmailDeliveryChecker = () => {
   // Google Sheets integration
   const saveToGoogleSheets = async (data) => {
   try {
-    const response = await fetch('https://script.google.com/macros/s/AKfycbyLT6sLwtHfElUgHEnpqJORhOGlImMgEYHXQvWrKh8/dev', {
+    const response = await fetch('https://script.google.com/macros/s/AKfycbyRTCsheo6-ssx-7Ylu263nep5p6zDGMR1c-wtS5qIeY-uLnS2itilZOK2k0qTW2sJ_/exec', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
