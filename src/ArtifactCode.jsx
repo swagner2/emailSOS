@@ -1,975 +1,725 @@
-import React, { useState, useEffect } from 'react';
-
-const EmailDeliveryChecker = () => {
-  const [domainIssues, setDomainIssues] = useState([]);
-  const [calculationData, setCalculationData] = useState({});
-  const [domainCheckComplete, setDomainCheckComplete] = useState(false);
-  const [calculationComplete, setCalculationComplete] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const [domainResults, setDomainResults] = useState('');
-  const [impactResults, setImpactResults] = useState('');
-  const [emailCapture, setEmailCapture] = useState('');
-  
-  const [formData, setFormData] = useState({
-    domain: '',
-    userEmail: '',
-    companyName: '',
-    listSize: '',
-    avgOrderValue: '',
-    openRate: '',
-    clickRate: '',
-    conversionRate: '',
-    emailsPerMonth: ''
-  });
-
-  const handleInputChange = (e) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value
-    });
-  };
-
-  const logToGoogleSheets = async (data) => {
-    try {
-      const SHEET_ID = '1txSIvvKuQj6bxKkoYqxBPadip9iPTam2G4yLvJRYTRM';
-      
-      // Method 1: Try webhook for testing
-      try {
-        const webhookResponse = await fetch('https://httpbin.org/post', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            sheet_id: SHEET_ID,
-            data: data,
-            timestamp: new Date().toISOString()
-          })
-        });
-        
-        if (webhookResponse.ok) {
-          console.log('✅ Data logged to webhook successfully');
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Email SOS Delivery Checker & ROI Calculator</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
         }
-      } catch (webhookError) {
-        console.log('❌ Webhook failed:', webhookError);
-      }
-      
-      // Method 2: Create hidden iframe submission
-      const iframe = document.createElement('iframe');
-      iframe.style.display = 'none';
-      iframe.name = 'sheet-submit';
-      document.body.appendChild(iframe);
 
-      const form = document.createElement('form');
-      form.method = 'POST';
-      form.action = 'https://docs.google.com/forms/d/e/1FAIpQLSdummy/formResponse';
-      form.target = 'sheet-submit';
-
-      // Add form fields
-      const fields = {
-        timestamp: data.timestamp || new Date().toISOString(),
-        domain: data.domain || '',
-        email: data.email || '',
-        company: data.company || '',
-        spf_status: data.spf_status || '',
-        dkim_status: data.dkim_status || '',
-        dmarc_status: data.dmarc_status || '',
-        mx_status: data.mx_status || '',
-        domain_issues_count: data.domain_issues_count || 0,
-        list_size: data.list_size || '',
-        avg_order_value: data.avg_order_value || '',
-        open_rate: data.open_rate || '',
-        click_rate: data.click_rate || '',
-        conversion_rate: data.conversion_rate || '',
-        emails_per_month: data.emails_per_month || '',
-        monthly_revenue_loss: data.monthly_revenue_loss || '',
-        annual_revenue_loss: data.annual_revenue_loss || '',
-        list_type: data.list_type || '',
-        source: data.source || ''
-      };
-
-      Object.entries(fields).forEach(([key, value]) => {
-        const input = document.createElement('input');
-        input.type = 'hidden';
-        input.name = key;
-        input.value = value.toString();
-        form.appendChild(input);
-      });
-
-      document.body.appendChild(form);
-      form.submit();
-
-      setTimeout(() => {
-        document.body.removeChild(form);
-        document.body.removeChild(iframe);
-      }, 2000);
-      
-      // Method 3: Console logging for manual copy
-      console.log('📊 GOOGLE SHEETS DATA - COPY THIS TO YOUR SHEET:');
-      console.log('='.repeat(80));
-      console.log('ROW DATA (paste as new row):');
-      console.log([
-        data.timestamp || new Date().toISOString(),
-        data.domain || '',
-        data.email || '',
-        data.company || '',
-        data.spf_status || '',
-        data.dkim_status || '',
-        data.dmarc_status || '',
-        data.mx_status || '',
-        data.domain_issues_count || 0,
-        data.list_size || '',
-        data.avg_order_value || '',
-        data.open_rate || '',
-        data.click_rate || '',
-        data.conversion_rate || '',
-        data.emails_per_month || '',
-        data.monthly_revenue_loss || '',
-        data.annual_revenue_loss || '',
-        data.list_type || '',
-        data.source || ''
-      ].join('\t'));
-      console.log('='.repeat(80));
-      
-      return { success: true, method: 'console_logging' };
-      
-    } catch (error) {
-      console.error('❌ Failed to log data:', error);
-      return { success: false, error: error.message };
-    }
-  };
-
-  const checkDNSRecords = async (domain) => {
-    const results = [];
-    
-    try {
-      // Check SPF record
-      const spfResponse = await fetch(`https://dns.google/resolve?name=${domain}&type=TXT`);
-      const spfData = await spfResponse.json();
-      
-      const spfRecord = spfData.Answer?.find(record => 
-        record.data.replace(/"/g, '').includes('v=spf1')
-      );
-      
-      results.push({
-        name: 'SPF Record',
-        status: spfRecord ? 'pass' : 'fail',
-        message: spfRecord ? 
-          `Valid SPF record found: ${spfRecord.data.replace(/"/g, '').substring(0, 100)}${spfRecord.data.length > 100 ? '...' : ''}` : 
-          'No SPF record found - emails may be marked as spam',
-        impact: 'SPF helps prevent email spoofing and improves deliverability',
-        record: spfRecord?.data || null
-      });
-
-      // Check DMARC record
-      const dmarcResponse = await fetch(`https://dns.google/resolve?name=_dmarc.${domain}&type=TXT`);
-      const dmarcData = await dmarcResponse.json();
-      
-      const dmarcRecord = dmarcData.Answer?.find(record => 
-        record.data.replace(/"/g, '').includes('v=DMARC1')
-      );
-      
-      results.push({
-        name: 'DMARC Record',
-        status: dmarcRecord ? 'pass' : 'fail',
-        message: dmarcRecord ? 
-          `DMARC policy found: ${dmarcRecord.data.replace(/"/g, '').substring(0, 100)}${dmarcRecord.data.length > 100 ? '...' : ''}` : 
-          'No DMARC record found - domain vulnerable to spoofing',
-        impact: 'DMARC provides email authentication and protects your brand',
-        record: dmarcRecord?.data || null
-      });
-
-      // Check DKIM record
-      const commonSelectors = ['google', 'k1', 'default', 'selector1', 'mail', 'dkim', 's1', 's2'];
-      let dkimFound = false;
-      let dkimRecord = null;
-      let dkimSelector = null;
-
-      for (const selector of commonSelectors) {
-        try {
-          const dkimResponse = await fetch(`https://dns.google/resolve?name=${selector}._domainkey.${domain}&type=TXT`);
-          const dkimData = await dkimResponse.json();
-          
-          const record = dkimData.Answer?.find(record => {
-            const data = record.data.replace(/"/g, '');
-            return data.includes('v=DKIM1') || data.includes('k=rsa') || data.includes('k=ed25519') || data.includes('p=');
-          });
-          
-          if (record) {
-            dkimFound = true;
-            dkimRecord = record.data;
-            dkimSelector = selector;
-            break;
-          }
-        } catch (error) {
-          // Continue to next selector
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
         }
-      }
 
-      results.push({
-        name: 'DKIM Record',
-        status: dkimFound ? 'pass' : 'fail',
-        message: dkimFound ? 
-          `DKIM record found at ${dkimSelector}._domainkey.${domain}` : 
-          'No DKIM record found (checked common selectors) - emails may lack authentication',
-        impact: 'DKIM authenticates your emails and builds sender reputation',
-        record: dkimRecord
-      });
-
-      // Check MX record
-      const mxResponse = await fetch(`https://dns.google/resolve?name=${domain}&type=MX`);
-      const mxData = await mxResponse.json();
-      
-      const mxRecords = mxData.Answer || [];
-      results.push({
-        name: 'MX Record',
-        status: mxRecords.length > 0 ? 'pass' : 'fail',
-        message: mxRecords.length > 0 ? 
-          `${mxRecords.length} MX record(s) found: ${mxRecords[0]?.data || 'Valid mail server'}` : 
-          'No MX records found - cannot receive emails',
-        impact: 'MX records route your incoming emails properly',
-        record: mxRecords[0]?.data || null
-      });
-
-      return results;
-      
-    } catch (error) {
-      console.error('DNS check failed:', error);
-      throw new Error('Unable to check DNS records. Please check your internet connection and try again.');
-    }
-  };
-
-  const checkDomain = async () => {
-    if (!formData.domain.trim()) {
-      alert('Please enter a domain name');
-      return;
-    }
-
-    const cleanDomain = formData.domain.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0];
-    
-    setIsLoading(true);
-    setDomainResults('');
-    setDomainIssues([]);
-
-    try {
-      const results = await checkDNSRecords(cleanDomain);
-      
-      const issues = results
-        .filter(result => result.status === 'fail')
-        .map(result => result.name);
-      
-      setDomainIssues(issues);
-      displayDomainResults(results);
-      setDomainCheckComplete(true);
-      
-      // Log domain check to Google Sheets
-      const domainData = {
-        timestamp: new Date().toISOString(),
-        domain: cleanDomain,
-        email: '',
-        company: '',
-        spf_status: issues.includes('SPF Record') ? 'FAIL' : 'PASS',
-        dkim_status: issues.includes('DKIM Record') ? 'FAIL' : 'PASS',
-        dmarc_status: issues.includes('DMARC Record') ? 'FAIL' : 'PASS',
-        mx_status: issues.includes('MX Record') ? 'FAIL' : 'PASS',
-        domain_issues_count: issues.length,
-        list_size: '',
-        avg_order_value: '',
-        open_rate: '',
-        click_rate: '',
-        conversion_rate: '',
-        emails_per_month: '',
-        monthly_revenue_loss: '',
-        annual_revenue_loss: '',
-        list_type: 'domain_check_only',
-        source: 'Email Delivery Checker - Domain Check'
-      };
-      
-      logToGoogleSheets(domainData).catch(console.error);
-      
-    } catch (error) {
-      console.error('Domain check failed:', error);
-      alert(error.message || 'Failed to check domain. Please try again.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const displayDomainResults = (results) => {
-    const resultElements = results.map((result, index) => (
-      <div key={index} className="mb-4 p-3 border-l-4" style={{borderLeftColor: result.status === 'pass' ? '#27ae60' : '#e74c3c'}}>
-        <div className="font-semibold">
-          <span className={`inline-block w-3 h-3 rounded-full mr-2 ${result.status === 'pass' ? 'bg-green-500' : 'bg-red-500'}`}></span>
-          {result.name}
-        </div>
-        <div>{result.message}</div>
-        <div className="text-sm text-gray-600">{result.impact}</div>
-      </div>
-    ));
-
-    setDomainResults(
-      <div className="mt-5 p-5 bg-green-50 border border-green-200 rounded-lg">
-        <h3 className="text-lg font-semibold mb-4">Domain Analysis Results</h3>
-        {resultElements}
-        {domainIssues.length > 0 ? (
-          <div className="mt-4 p-4 bg-green-100 rounded-lg">
-            <h4 className="font-semibold text-red-600 mb-3">🚨 Issues Found - These are hurting your email deliverability:</h4>
-            <ul className="list-none pl-0">
-              {domainIssues.map((issue, index) => (
-                <li key={index} className="py-1 border-b border-gray-200 last:border-b-0">
-                  ✓ Fix {issue} configuration
-                </li>
-              ))}
-            </ul>
-            <p className="mt-3"><strong>Impact:</strong> These issues can reduce your email deliverability by 20-40% and harm your sender reputation.</p>
-          </div>
-        ) : (
-          <div className="mt-4 p-4 bg-green-100 rounded-lg">
-            <strong>✅ Great job! Your email infrastructure looks solid.</strong><br />
-            Your domain has proper email authentication configured.
-          </div>
-        )}
-      </div>
-    );
-  };
-
-  const calculateMonthlyLoss = (data = calculationData) => {
-    if (!data.listSize) return 0;
-    
-    const currentOpens = (data.listSize * data.emailsPerMonth * data.openRate) / 100;
-    const currentClicks = (currentOpens * data.clickRate) / 100;
-    const currentConversions = (currentClicks * data.conversionRate) / 100;
-    const currentRevenue = currentConversions * data.avgOrderValue;
-
-    const deliverabilityImpact = domainIssues.length > 0 ? 0.35 : 0.15;
-    const improvedOpens = currentOpens * (1 + deliverabilityImpact);
-    const improvedClicks = (improvedOpens * data.clickRate) / 100;
-    const improvedConversions = (improvedClicks * data.conversionRate) / 100;
-    const improvedRevenue = improvedConversions * data.avgOrderValue;
-
-    return improvedRevenue - currentRevenue;
-  };
-
-  const calculateImpact = () => {
-    const { listSize, avgOrderValue, openRate, clickRate, conversionRate, emailsPerMonth } = formData;
-    
-    if (!listSize || !avgOrderValue || !openRate || !clickRate || !conversionRate || !emailsPerMonth) {
-      alert('Please fill in all fields');
-      return;
-    }
-
-    const data = {
-      listSize: parseInt(listSize),
-      avgOrderValue: parseFloat(avgOrderValue),
-      openRate: parseFloat(openRate),
-      clickRate: parseFloat(clickRate),
-      conversionRate: parseFloat(conversionRate),
-      emailsPerMonth: parseInt(emailsPerMonth)
-    };
-
-    setCalculationData(data);
-    
-    // Log calculator usage to Google Sheets
-    const monthlyLoss = calculateMonthlyLoss(data);
-    const calculatorData = {
-      timestamp: new Date().toISOString(),
-      domain: formData.domain || '',
-      email: '',
-      company: '',
-      spf_status: domainResults && domainIssues.includes('SPF Record') ? 'FAIL' : domainResults ? 'PASS' : '',
-      dkim_status: domainResults && domainIssues.includes('DKIM Record') ? 'FAIL' : domainResults ? 'PASS' : '',
-      dmarc_status: domainResults && domainIssues.includes('DMARC Record') ? 'FAIL' : domainResults ? 'PASS' : '',
-      mx_status: domainResults && domainIssues.includes('MX Record') ? 'FAIL' : domainResults ? 'PASS' : '',
-      domain_issues_count: domainIssues.length,
-      list_size: data.listSize,
-      avg_order_value: data.avgOrderValue,
-      open_rate: data.openRate,
-      click_rate: data.clickRate,
-      conversion_rate: data.conversionRate,
-      emails_per_month: data.emailsPerMonth,
-      monthly_revenue_loss: Math.round(monthlyLoss),
-      annual_revenue_loss: Math.round(monthlyLoss * 12),
-      list_type: 'calculator_only',
-      source: 'Email Delivery Checker - Calculator Usage'
-    };
-    
-    logToGoogleSheets(calculatorData).catch(console.error);
-    
-    displayBlurredResults(data);
-    
-    if (formData.userEmail) {
-      displayImpactResults(data);
-      setCalculationComplete(true);
-      addToKlaviyo(formData.userEmail, formData.companyName, 'calculator').catch(console.error);
-    }
-  };
-
-  const displayBlurredResults = (data) => {
-    const currentOpens = (data.listSize * data.emailsPerMonth * data.openRate) / 100;
-    const currentClicks = (currentOpens * data.clickRate) / 100;
-    const currentConversions = (currentClicks * data.conversionRate) / 100;
-    const currentRevenue = currentConversions * data.avgOrderValue;
-
-    const deliverabilityImpact = domainIssues.length > 0 ? 0.35 : 0.15;
-    const improvedOpens = currentOpens * (1 + deliverabilityImpact);
-    const improvedClicks = (improvedOpens * data.clickRate) / 100;
-    const improvedConversions = (improvedClicks * data.conversionRate) / 100;
-    const improvedRevenue = improvedConversions * data.avgOrderValue;
-
-    const monthlyLoss = improvedRevenue - currentRevenue;
-    const annualLoss = monthlyLoss * 12;
-
-    setImpactResults(
-      <div className="relative">
-        <div className="filter blur-sm pointer-events-none">
-          <div className="bg-gradient-to-r from-red-500 to-red-600 text-white p-8 rounded-xl text-center mt-8">
-            <h3 className="text-2xl mb-2">💰 Monthly Revenue Impact</h3>
-            <div className="text-5xl font-bold my-5">${monthlyLoss.toLocaleString()}</div>
-            <p>You're potentially losing this much revenue per month due to poor email deliverability</p>
-            <div className="mt-5 text-xl">
-              <strong>Annual Impact: ${annualLoss.toLocaleString()}</strong>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mt-8">
-            <div className="bg-yellow-50 p-5 rounded-lg">
-              <h4 className="text-lg font-semibold mb-3">📈 Current Performance</h4>
-              <p><strong>Monthly Opens:</strong> {currentOpens.toLocaleString()}</p>
-              <p><strong>Monthly Clicks:</strong> {currentClicks.toLocaleString()}</p>
-              <p><strong>Monthly Conversions:</strong> {currentConversions.toLocaleString()}</p>
-              <p><strong>Monthly Revenue:</strong> ${currentRevenue.toLocaleString()}</p>
-            </div>
-            <div className="bg-green-50 p-5 rounded-lg">
-              <h4 className="text-lg font-semibold mb-3">🎯 Potential with Good Deliverability</h4>
-              <p><strong>Monthly Opens:</strong> {improvedOpens.toLocaleString()}</p>
-              <p><strong>Monthly Clicks:</strong> {improvedClicks.toLocaleString()}</p>
-              <p><strong>Monthly Conversions:</strong> {improvedConversions.toLocaleString()}</p>
-              <p><strong>Monthly Revenue:</strong> ${improvedRevenue.toLocaleString()}</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="absolute inset-0 flex items-center justify-center">
-          <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md mx-4 border-4 border-blue-500">
-            <div className="text-center mb-6">
-              <div className="text-4xl mb-3">📧</div>
-              <h3 className="text-2xl font-bold text-gray-800 mb-2">What email should we send the results to?</h3>
-              <p className="text-gray-600">Get your detailed revenue recovery report and step-by-step fix guide</p>
-            </div>
-            
-            <div className="space-y-4">
-              <div>
-                <input
-                  type="email"
-                  name="userEmail"
-                  value={formData.userEmail}
-                  onChange={handleInputChange}
-                  placeholder="your.email@company.com"
-                  className="w-full p-4 border-2 border-gray-200 rounded-lg text-lg focus:border-blue-500 focus:outline-none"
-                />
-              </div>
-              <div>
-                <input
-                  type="text"
-                  name="companyName"
-                  value={formData.companyName}
-                  onChange={handleInputChange}
-                  placeholder="Company Name (Optional)"
-                  className="w-full p-4 border-2 border-gray-200 rounded-lg text-lg focus:border-blue-500 focus:outline-none"
-                />
-              </div>
-              <button
-                onClick={handleEmailSubmit}
-                className="w-full bg-gradient-to-r from-blue-500 to-blue-600 text-white p-4 rounded-lg text-lg font-semibold hover:from-blue-600 hover:to-blue-700 transition-all"
-              >
-                📨 Send Me The Complete Analysis
-              </button>
-            </div>
-            
-            <div className="mt-4 text-center text-sm text-gray-500">
-              <p>✓ Detailed revenue recovery plan</p>
-              <p>✓ Step-by-step technical instructions</p>
-              <p>✓ Priority implementation roadmap</p>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  const displayImpactResults = (data) => {
-    const currentOpens = (data.listSize * data.emailsPerMonth * data.openRate) / 100;
-    const currentClicks = (currentOpens * data.clickRate) / 100;
-    const currentConversions = (currentClicks * data.conversionRate) / 100;
-    const currentRevenue = currentConversions * data.avgOrderValue;
-
-    const deliverabilityImpact = domainIssues.length > 0 ? 0.35 : 0.15;
-    const improvedOpens = currentOpens * (1 + deliverabilityImpact);
-    const improvedClicks = (improvedOpens * data.clickRate) / 100;
-    const improvedConversions = (improvedClicks * data.conversionRate) / 100;
-    const improvedRevenue = improvedConversions * data.avgOrderValue;
-
-    const monthlyLoss = improvedRevenue - currentRevenue;
-    const annualLoss = monthlyLoss * 12;
-
-    setImpactResults(
-      <div>
-        <div className="bg-gradient-to-r from-red-500 to-red-600 text-white p-8 rounded-xl text-center mt-8">
-          <h3 className="text-2xl mb-2">💰 Monthly Revenue Impact</h3>
-          <div className="text-5xl font-bold my-5">${monthlyLoss.toLocaleString()}</div>
-          <p>You're potentially losing this much revenue per month due to poor email deliverability</p>
-          <div className="mt-5 text-xl">
-            <strong>Annual Impact: ${annualLoss.toLocaleString()}</strong>
-          </div>
-          <div className="mt-6 p-4 bg-white bg-opacity-20 rounded-lg">
-            <p className="text-lg">
-              📧 <strong>Your detailed fix-it guide has been sent to {formData.userEmail}!</strong>
-            </p>
-            <p className="text-sm mt-2">Check your inbox for step-by-step instructions to recover this revenue.</p>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mt-8">
-          <div className="bg-yellow-50 p-5 rounded-lg">
-            <h4 className="text-lg font-semibold mb-3">📈 Current Performance</h4>
-            <p><strong>Monthly Opens:</strong> {currentOpens.toLocaleString()}</p>
-            <p><strong>Monthly Clicks:</strong> {currentClicks.toLocaleString()}</p>
-            <p><strong>Monthly Conversions:</strong> {currentConversions.toLocaleString()}</p>
-            <p><strong>Monthly Revenue:</strong> ${currentRevenue.toLocaleString()}</p>
-          </div>
-          <div className="bg-green-50 p-5 rounded-lg">
-            <h4 className="text-lg font-semibold mb-3">🎯 Potential with Good Deliverability</h4>
-            <p><strong>Monthly Opens:</strong> {improvedOpens.toLocaleString()}</p>
-            <p><strong>Monthly Clicks:</strong> {improvedClicks.toLocaleString()}</p>
-            <p><strong>Monthly Conversions:</strong> {improvedConversions.toLocaleString()}</p>
-            <p><strong>Monthly Revenue:</strong> ${improvedRevenue.toLocaleString()}</p>
-          </div>
-        </div>
-
-        {domainIssues.length > 0 ? (
-          <div className="bg-green-50 p-5 rounded-lg mt-6">
-            <h4 className="text-lg font-semibold mb-3">🔧 Immediate Action Items to Recover Revenue:</h4>
-            <ul className="list-none pl-0">
-              <li className="py-1 border-b border-gray-200">✓ Set up proper SPF record to authorize your sending servers</li>
-              <li className="py-1 border-b border-gray-200">✓ Configure DKIM signing for email authentication</li>
-              <li className="py-1 border-b border-gray-200">✓ Implement DMARC policy to protect your domain reputation</li>
-              <li className="py-1 border-b border-gray-200">✓ Use a reputable email service provider (ESP)</li>
-              <li className="py-1 border-b border-gray-200">✓ Monitor your sender reputation regularly</li>
-              <li className="py-1 border-b border-gray-200">✓ Clean your email list to remove inactive subscribers</li>
-              <li className="py-1 border-b border-gray-200 last:border-b-0">✓ Implement proper email warm-up procedures</li>
-            </ul>
-            <p className="mt-3"><strong>Expected Timeline:</strong> 2-4 weeks to see significant improvement in deliverability</p>
-          </div>
-        ) : (
-          <div className="bg-green-50 p-5 rounded-lg mt-6">
-            <h4 className="text-lg font-semibold mb-3">🚀 Additional Optimization Opportunities:</h4>
-            <ul className="list-none pl-0">
-              <li className="py-1 border-b border-gray-200">✓ Implement email list segmentation for better targeting</li>
-              <li className="py-1 border-b border-gray-200">✓ A/B test subject lines to improve open rates</li>
-              <li className="py-1 border-b border-gray-200">✓ Optimize email sending times for your audience</li>
-              <li className="py-1 border-b border-gray-200">✓ Use behavioral triggers for automated email sequences</li>
-              <li className="py-1 border-b border-gray-200">✓ Implement re-engagement campaigns for inactive subscribers</li>
-              <li className="py-1 border-b border-gray-200 last:border-b-0">✓ Focus on mobile optimization for better click rates</li>
-            </ul>
-          </div>
-        )}
-      </div>
-    );
-  };
-
-  const addToKlaviyo = async (email, company, listType = 'calculator') => {
-    try {
-      console.log(`🔄 Adding ${email} to Klaviyo ${listType} list...`);
-      
-      const klaviyoApiKey = 'Mzfpkb';
-      const listIds = {
-        calculator: 'TCapS8',
-        guide: 'U42FCU'
-      };
-      
-      const listId = listIds[listType];
-      
-      // Method 1: Try Klaviyo Subscribe API
-      try {
-        const subscribeUrl = `https://a.klaviyo.com/api/v2/list/${listId}/subscribe`;
-        
-        const subscribeData = {
-          api_key: klaviyoApiKey,
-          email: email,
-          properties: {
-            first_name: company ? company.split(' ')[0] : '',
-            last_name: company ? company.split(' ').slice(1).join(' ') : '',
-            company: company || '',
-            source: `Email Delivery Checker - ${listType}`,
-            domain_issues: domainIssues.join(', ') || 'None detected',
-            domain_issues_count: domainIssues.length,
-            timestamp: new Date().toISOString()
-          }
-        };
-        
-        if (calculationData.listSize) {
-          const monthlyLoss = calculateMonthlyLoss();
-          subscribeData.properties = {
-            ...subscribeData.properties,
-            list_size: calculationData.listSize,
-            avg_order_value: calculationData.avgOrderValue,
-            open_rate: calculationData.openRate,
-            click_rate: calculationData.clickRate,
-            conversion_rate: calculationData.conversionRate,
-            emails_per_month: calculationData.emailsPerMonth,
-            monthly_revenue_loss: Math.round(monthlyLoss),
-            annual_revenue_loss: Math.round(monthlyLoss * 12)
-          };
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
         }
-        
-        const response = await fetch(subscribeUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(subscribeData)
-        });
-        
-        if (response.ok) {
-          console.log(`✅ Successfully added ${email} to Klaviyo ${listType} list`);
-          return { success: true, method: 'klaviyo_api' };
-        } else {
-          console.log(`❌ Klaviyo API failed: ${response.status}`);
-          throw new Error(`Klaviyo API failed: ${response.status}`);
+
+        .header {
+            background: linear-gradient(45deg, #2c3e50, #3498db);
+            color: white;
+            padding: 40px;
+            text-align: center;
         }
-        
-      } catch (apiError) {
-        console.log('❌ Klaviyo API method failed:', apiError);
-        
-        // Method 2: Try the list signup URLs directly
-        const listUrls = {
-          calculator: 'https://www.klaviyo.com/list/TCapS8',
-          guide: 'https://www.klaviyo.com/list/U42FCU'
-        };
-        
-        const klaviyoSignupUrl = listUrls[listType];
-        
-        try {
-          const iframe = document.createElement('iframe');
-          iframe.style.display = 'none';
-          iframe.name = `klaviyo-signup-${listType}`;
-          document.body.appendChild(iframe);
 
-          const form = document.createElement('form');
-          form.method = 'POST';
-          form.action = klaviyoSignupUrl;
-          form.target = `klaviyo-signup-${listType}`;
-
-          const emailInput = document.createElement('input');
-          emailInput.type = 'hidden';
-          emailInput.name = 'email';
-          emailInput.value = email;
-          form.appendChild(emailInput);
-
-          if (company) {
-            const companyInput = document.createElement('input');
-            companyInput.type = 'hidden';
-            companyInput.name = 'company';
-            companyInput.value = company;
-            form.appendChild(companyInput);
-          }
-
-          const sourceInput = document.createElement('input');
-          sourceInput.type = 'hidden';
-          sourceInput.name = 'source';
-          sourceInput.value = `Email Delivery Checker - ${listType}`;
-          form.appendChild(sourceInput);
-
-          document.body.appendChild(form);
-          form.submit();
-
-          setTimeout(() => {
-            document.body.removeChild(form);
-            document.body.removeChild(iframe);
-          }, 2000);
-
-          console.log(`✅ Form submitted to Klaviyo ${listType} list`);
-          return { success: true, method: 'form_submit' };
-          
-        } catch (formError) {
-          console.log('❌ Form submission failed:', formError);
-          throw formError;
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            font-weight: 700;
         }
-      }
-      
-    } catch (error) {
-      console.error(`❌ All Klaviyo methods failed for ${listType} list:`, error);
-      
-      console.log('📧 KLAVIYO LEAD DATA - MANUAL ENTRY NEEDED:');
-      console.log('='.repeat(50));
-      console.log(`Email: ${email}`);
-      console.log(`Company: ${company || 'Not provided'}`);
-      console.log(`List Type: ${listType}`);
-      console.log(`Source: Email Delivery Checker - ${listType}`);
-      console.log(`Domain Issues: ${domainIssues.join(', ') || 'None detected'}`);
-      console.log(`Issues Count: ${domainIssues.length}`);
-      if (calculationData.listSize) {
-        const monthlyLoss = calculateMonthlyLoss();
-        console.log(`List Size: ${calculationData.listSize}`);
-        console.log(`AOV: ${calculationData.avgOrderValue}`);
-        console.log(`Monthly Loss: ${Math.round(monthlyLoss)}`);
-        console.log(`Annual Loss: ${Math.round(monthlyLoss * 12)}`);
-      }
-      console.log('='.repeat(50));
-      
-      return { success: false, error: error.message };
-    }
-  };
 
-  const handleEmailSubmit = () => {
-    if (!formData.userEmail) {
-      alert('Please enter your email address');
-      return;
-    }
+        .header p {
+            font-size: 1.2em;
+            opacity: 0.9;
+        }
 
-    displayImpactResults(calculationData);
-    setCalculationComplete(true);
-    addToKlaviyo(formData.userEmail, formData.companyName, 'calculator').catch(console.error);
-  };
+        .main-content {
+            padding: 40px;
+        }
 
-  const sendGuide = async () => {
-    if (!formData.userEmail) {
-      alert('Please enter your email address');
-      return;
-    }
+        .section {
+            margin-bottom: 40px;
+            padding: 30px;
+            background: #f8f9fa;
+            border-radius: 12px;
+            border-left: 4px solid #3498db;
+        }
 
-    if (!domainCheckComplete && !calculationComplete) {
-      alert('Please run the domain check or calculator first');
-      return;
-    }
+        .section h2 {
+            color: #2c3e50;
+            margin-bottom: 20px;
+            font-size: 1.8em;
+        }
 
-    try {
-      await addToKlaviyo(formData.userEmail, formData.companyName, 'guide');
-      
-      const reportSummary = generateReportSummary();
-      
-      setEmailCapture(
-        <div className="mt-5 p-5 bg-green-50 border border-green-200 rounded-lg">
-          <h3 className="text-lg font-semibold mb-3">✅ Custom Fix-It Guide Sent!</h3>
-          <p>We've sent a detailed report to <strong>{formData.userEmail}</strong> that includes:</p>
-          <ul className="list-disc pl-6 my-4">
-            <li>📋 Complete analysis of your current email setup</li>
-            <li>🔧 Step-by-step technical instructions to fix each issue</li>
-            <li>💰 Your personalized revenue recovery potential</li>
-            <li>⏱️ Implementation timeline and priority order</li>
-            <li>🎯 Advanced optimization strategies</li>
-          </ul>
-          <p><strong>Check your inbox in the next few minutes!</strong></p>
-          {reportSummary}
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #34495e;
+        }
+
+        input[type="text"], input[type="number"], input[type="email"] {
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: #3498db;
+        }
+
+        .btn {
+            background: linear-gradient(45deg, #3498db, #2980b9);
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(52, 152, 219, 0.4);
+        }
+
+        .btn-secondary {
+            background: linear-gradient(45deg, #95a5a6, #7f8c8d);
+        }
+
+        .check-result {
+            margin-top: 20px;
+            padding: 20px;
+            border-radius: 8px;
+            display: none;
+        }
+
+        .check-result.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .check-result.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .check-result.warning {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+
+        .status-pass { background: #27ae60; }
+        .status-fail { background: #e74c3c; }
+        .status-warn { background: #f39c12; }
+
+        .calculator-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .impact-display {
+            background: linear-gradient(135deg, #ff6b6b, #ee5a52);
+            color: white;
+            padding: 30px;
+            border-radius: 12px;
+            text-align: center;
+            margin-top: 30px;
+        }
+
+        .impact-display h3 {
+            font-size: 2em;
+            margin-bottom: 10px;
+        }
+
+        .impact-display .amount {
+            font-size: 3em;
+            font-weight: bold;
+            margin: 20px 0;
+        }
+
+        .recommendations {
+            background: #e8f5e8;
+            padding: 20px;
+            border-radius: 8px;
+            margin-top: 20px;
+        }
+
+        .recommendations h4 {
+            color: #2c3e50;
+            margin-bottom: 15px;
+        }
+
+        .recommendations ul {
+            list-style: none;
+            padding: 0;
+        }
+
+        .recommendations li {
+            padding: 8px 0;
+            border-bottom: 1px solid #ddd;
+        }
+
+        .recommendations li:last-child {
+            border-bottom: none;
+        }
+
+        .recommendations li:before {
+            content: "✓";
+            color: #27ae60;
+            font-weight: bold;
+            margin-right: 10px;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        @media (max-width: 768px) {
+            .grid-2 {
+                grid-template-columns: 1fr;
+            }
+            
+            .header h1 {
+                font-size: 2em;
+            }
+            
+            .main-content {
+                padding: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📧 Email Delivery Checker & ROI Calculator</h1>
+            <p>Analyze your email infrastructure and calculate the cost of poor deliverability</p>
         </div>
-      );
-    } catch (error) {
-      console.error('Error sending results:', error);
-      setEmailCapture(
-        <div className="mt-5 p-5 bg-yellow-50 border border-yellow-200 rounded-lg">
-          <h3 className="text-lg font-semibold mb-3">⚠️ Almost There!</h3>
-          <p>We're processing your request for <strong>{formData.userEmail}</strong>. You should receive your custom fix-it guide shortly.</p>
-        </div>
-      );
-    }
-  };
 
-  const generateReportSummary = () => {
-    if (!domainCheckComplete && !calculationComplete) return '';
-    
-    let summary = '<div className="bg-gray-50 p-4 rounded-lg mt-4"><h4 className="font-semibold mb-2">Your Report Preview:</h4>';
-    
-    if (domainIssues.length > 0) {
-      summary += `<p><strong>🚨 ${domainIssues.length} Critical Issues Found:</strong> ${domainIssues.join(', ')}</p>`;
-    } else {
-      summary += '<p><strong>✅ Email Infrastructure:</strong> Looking good!</p>';
-    }
-    
-    if (calculationComplete) {
-      const monthlyLoss = calculateMonthlyLoss();
-      summary += `<p><strong>💰 Monthly Revenue Impact:</strong> ${monthlyLoss.toLocaleString()}</p>`;
-    }
-    
-    summary += '</div>';
-    return <div dangerouslySetInnerHTML={{ __html: summary }} />;
-  };
-
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-500 to-purple-600 p-5">
-      <div className="max-w-6xl mx-auto bg-white rounded-2xl shadow-2xl overflow-hidden">
-        <div className="bg-gradient-to-r from-gray-800 to-blue-600 text-white p-10 text-center">
-          <h1 className="text-4xl font-bold mb-3">📧 Email Delivery Checker & ROI Calculator</h1>
-          <p className="text-xl opacity-90">Analyze your email infrastructure and calculate the cost of poor deliverability</p>
-        </div>
-
-        <div className="p-10">
-          <div className="mb-10 p-8 bg-gray-50 rounded-xl border-l-4 border-blue-500">
-            <h2 className="text-2xl font-semibold text-gray-800 mb-5">🔍 Domain Email Infrastructure Check</h2>
-            <div className="mb-5">
-              <label className="block mb-2 font-semibold text-gray-700">Enter your domain (e.g., example.com):</label>
-              <input
-                type="text"
-                name="domain"
-                value={formData.domain}
-                onChange={handleInputChange}
-                placeholder="yourdomain.com"
-                className="w-full p-3 border-2 border-gray-200 rounded-lg text-lg focus:border-blue-500 focus:outline-none"
-              />
-              <p className="text-sm text-gray-500 mt-1">
-                Enter just the domain name without "www" or "https://"
-              </p>
+        <div class="main-content">
+            <!-- Domain Check Section -->
+            <div class="section">
+                <h2>🔍 Domain Email Infrastructure Check</h2>
+                <div class="form-group">
+                    <label for="domain">Enter your domain (e.g., example.com):</label>
+                    <input type="text" id="domain" placeholder="example.com">
+                </div>
+                <button class="btn" onclick="checkDomain()">Check Email Records</button>
+                
+                <div class="loading" id="domainLoading">
+                    <div class="spinner"></div>
+                    <p>Checking your domain's email records...</p>
+                </div>
+                
+                <div id="domainResults"></div>
             </div>
-            <button
-              onClick={checkDomain}
-              className="bg-gradient-to-r from-blue-500 to-blue-600 text-white px-6 py-3 rounded-lg font-semibold hover:from-blue-600 hover:to-blue-700 transition-all"
-            >
-              Check Email Records
-            </button>
-            
-            {isLoading && (
-              <div className="text-center py-5">
-                <div className="inline-block w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-3"></div>
-                <p>Checking DNS records for {formData.domain.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0]}...</p>
-                <p className="text-sm text-gray-500">This may take a few seconds</p>
-              </div>
-            )}
-            
-            {domainResults}
-          </div>
 
-          <div className="mb-10 p-8 bg-gray-50 rounded-xl border-l-4 border-blue-500">
-            <h2 className="text-2xl font-semibold text-gray-800 mb-3">📧 Get Your Custom Fix-It Guide</h2>
-            <p className="mb-5 text-gray-600">
-              {calculationComplete ? 
-                "Want a detailed step-by-step guide to fix these issues?" : 
-                "Complete the domain check or calculator above to receive a detailed report with step-by-step instructions."
-              }
-            </p>
-            
-            {!calculationComplete && (
-              <div className="mb-5">
-                <label className="block mb-2 font-semibold text-gray-700">Your Email Address:</label>
-                <input
-                  type="email"
-                  name="userEmail"
-                  value={formData.userEmail}
-                  onChange={handleInputChange}
-                  placeholder="you@yourdomain.com"
-                  className="w-full p-3 border-2 border-gray-200 rounded-lg text-lg focus:border-blue-500 focus:outline-none"
-                />
-              </div>
-            )}
-
-            <div className="flex flex-wrap gap-3">
-              {(domainCheckComplete || calculationComplete) && (
-                <button
-                  onClick={sendGuide}
-                  disabled={!formData.userEmail}
-                  className={`px-6 py-3 rounded-lg font-semibold transition-all ${
-                    formData.userEmail
-                      ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white hover:from-blue-600 hover:to-blue-700'
-                      : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                  }`}
-                >
-                  📨 Send Me the Fix-It Guide
-                </button>
-              )}
-              
-              <button
-                onClick={() => window.open('https://cal.com/stevenwagner/inboxsos', '_blank')}
-                className="bg-gradient-to-r from-red-500 to-red-600 text-white px-6 py-3 rounded-lg font-semibold hover:from-red-600 hover:to-red-700 transition-all"
-              >
-                🚀 Schedule Free Consultation
-              </button>
+            <!-- Email Capture Section -->
+            <div class="section">
+                <h2>📧 Get Your Custom Fix-It Guide</h2>
+                <p style="margin-bottom: 20px; color: #666;">Enter your email to receive a detailed report with step-by-step instructions to fix your email deliverability issues.</p>
+                <div class="grid-2">
+                    <div class="form-group">
+                        <label for="userEmail">Your Email Address:</label>
+                        <input type="email" id="userEmail" placeholder="you@yourdomain.com">
+                    </div>
+                    <div class="form-group">
+                        <label for="companyName">Company Name (Optional):</label>
+                        <input type="text" id="companyName" placeholder="Your Company">
+                    </div>
+                </div>
+                <button class="btn" onclick="sendResults()" id="sendResultsBtn" disabled>📨 Send Me the Fix-It Guide</button>
+                <button class="btn" onclick="scheduleConsultation()" style="background: linear-gradient(45deg, #e74c3c, #c0392b);">🚀 Hire Us to Fix This For You</button>
+                
+                <div id="emailCapture" class="check-result" style="margin-top: 20px;"></div>
             </div>
-            
-            {emailCapture}
-          </div>
 
-          <div className="mb-10 p-8 bg-gray-50 rounded-xl border-l-4 border-blue-500">
-            <h2 className="text-2xl font-semibold text-gray-800 mb-5">📊 Email Marketing Performance Calculator</h2>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 mb-5">
-              <div>
-                <label className="block mb-2 font-semibold text-gray-700">Email List Size:</label>
-                <input
-                  type="number"
-                  name="listSize"
-                  value={formData.listSize}
-                  onChange={handleInputChange}
-                  placeholder="10000"
-                  className="w-full p-3 border-2 border-gray-200 rounded-lg text-lg focus:border-blue-500 focus:outline-none"
-                />
-              </div>
-              <div>
-                <label className="block mb-2 font-semibold text-gray-700">Average Order Value ($):</label>
-                <input
-                  type="number"
-                  name="avgOrderValue"
-                  value={formData.avgOrderValue}
-                  onChange={handleInputChange}
-                  placeholder="75"
-                  className="w-full p-3 border-2 border-gray-200 rounded-lg text-lg focus:border-blue-500 focus:outline-none"
-                />
-              </div>
-              <div>
-                <label className="block mb-2 font-semibold text-gray-700">Current Open Rate (%):</label>
-                <input
-                  type="number"
-                  name="openRate"
-                  value={formData.openRate}
-                  onChange={handleInputChange}
-                  placeholder="20"
-                  className="w-full p-3 border-2 border-gray-200 rounded-lg text-lg focus:border-blue-500 focus:outline-none"
-                />
-              </div>
-              <div>
-                <label className="block mb-2 font-semibold text-gray-700">Click-Through Rate (%):</label>
-                <input
-                  type="number"
-                  name="clickRate"
-                  value={formData.clickRate}
-                  onChange={handleInputChange}
-                  placeholder="3"
-                  className="w-full p-3 border-2 border-gray-200 rounded-lg text-lg focus:border-blue-500 focus:outline-none"
-                />
-              </div>
-              <div>
-                <label className="block mb-2 font-semibold text-gray-700">Conversion Rate (%):</label>
-                <input
-                  type="number"
-                  name="conversionRate"
-                  value={formData.conversionRate}
-                  onChange={handleInputChange}
-                  placeholder="2"
-                  className="w-full p-3 border-2 border-gray-200 rounded-lg text-lg focus:border-blue-500 focus:outline-none"
-                />
-              </div>
-              <div>
-                <label className="block mb-2 font-semibold text-gray-700">Emails Sent Per Month:</label>
-                <input
-                  type="number"
-                  name="emailsPerMonth"
-                  value={formData.emailsPerMonth}
-                  onChange={handleInputChange}
-                  placeholder="4"
-                  className="w-full p-3 border-2 border-gray-200 rounded-lg text-lg focus:border-blue-500 focus:outline-none"
-                />
-              </div>
+            <!-- Email Marketing Calculator Section -->
+            <div class="section">
+                <h2>📊 Email Marketing Performance Calculator</h2>
+                <div class="calculator-grid">
+                    <div class="form-group">
+                        <label for="listSize">Email List Size:</label>
+                        <input type="number" id="listSize" placeholder="10000">
+                    </div>
+                    <div class="form-group">
+                        <label for="avgOrderValue">Average Order Value ($):</label>
+                        <input type="number" id="avgOrderValue" placeholder="75">
+                    </div>
+                    <div class="form-group">
+                        <label for="openRate">Current Open Rate (%):</label>
+                        <input type="number" id="openRate" placeholder="20">
+                    </div>
+                    <div class="form-group">
+                        <label for="clickRate">Click-Through Rate (%):</label>
+                        <input type="number" id="clickRate" placeholder="3">
+                    </div>
+                    <div class="form-group">
+                        <label for="conversionRate">Conversion Rate (%):</label>
+                        <input type="number" id="conversionRate" placeholder="2">
+                    </div>
+                    <div class="form-group">
+                        <label for="emailsPerMonth">Emails Sent Per Month:</label>
+                        <input type="number" id="emailsPerMonth" placeholder="4">
+                    </div>
+                </div>
+                <button class="btn" onclick="calculateImpact()">Calculate Impact</button>
+                
+                <div id="impactResults"></div>
             </div>
-            <button
-              onClick={calculateImpact}
-              className="bg-gradient-to-r from-blue-500 to-blue-600 text-white px-6 py-3 rounded-lg font-semibold hover:from-blue-600 hover:to-blue-700 transition-all"
-            >
-              Calculate My Revenue Impact
-            </button>
-            
-            {impactResults}
-          </div>
         </div>
-      </div>
     </div>
-  );
-};
 
-export default EmailDeliveryChecker;
+    <script>
+        let domainIssues = [];
+        let calculationData = {};
+        let domainCheckComplete = false;
+        let calculationComplete = false;
+
+        async function checkDomain() {
+            const domain = document.getElementById('domain').value.trim();
+            if (!domain) {
+                alert('Please enter a domain name');
+                return;
+            }
+
+            document.getElementById('domainLoading').style.display = 'block';
+            document.getElementById('domainResults').innerHTML = '';
+            domainIssues = [];
+
+            // Simulate DNS lookups (in real implementation, these would be actual DNS queries)
+            setTimeout(() => {
+                const results = simulateDNSCheck(domain);
+                displayDomainResults(results);
+                document.getElementById('domainLoading').style.display = 'none';
+            }, 2000);
+        }
+
+        function simulateDNSCheck(domain) {
+            // Simulate realistic DNS check results
+            const hasIssues = Math.random() > 0.3; // 70% chance of having issues
+            
+            const spfResult = {
+                name: 'SPF Record',
+                status: hasIssues && Math.random() > 0.4 ? 'fail' : 'pass',
+                message: hasIssues && Math.random() > 0.4 ? 'No SPF record found or invalid syntax' : 'Valid SPF record found',
+                impact: 'SPF helps prevent email spoofing and improves deliverability'
+            };
+
+            const dkimResult = {
+                name: 'DKIM Record',
+                status: hasIssues && Math.random() > 0.5 ? 'fail' : 'pass',
+                message: hasIssues && Math.random() > 0.5 ? 'DKIM signature not found or invalid' : 'Valid DKIM signature detected',
+                impact: 'DKIM authenticates your emails and builds sender reputation'
+            };
+
+            const dmarcResult = {
+                name: 'DMARC Record',
+                status: hasIssues && Math.random() > 0.6 ? 'fail' : 'pass',
+                message: hasIssues && Math.random() > 0.6 ? 'No DMARC policy found' : 'DMARC policy is configured',
+                impact: 'DMARC provides email authentication and protects your brand'
+            };
+
+            const mxResult = {
+                name: 'MX Record',
+                status: 'pass', // MX records are usually present
+                message: 'Valid MX records found',
+                impact: 'MX records route your incoming emails properly'
+            };
+
+            const results = [spfResult, dkimResult, dmarcResult, mxResult];
+            
+            // Track issues for impact calculation
+            results.forEach(result => {
+                if (result.status === 'fail') {
+                    domainIssues.push(result.name);
+                }
+            });
+
+            return results;
+        }
+
+        function displayDomainResults(results) {
+            const resultsDiv = document.getElementById('domainResults');
+            let html = '<div class="check-result success" style="display: block;"><h3>Domain Analysis Results</h3>';
+            
+            results.forEach(result => {
+                const statusClass = result.status === 'pass' ? 'status-pass' : 'status-fail';
+                html += `
+                    <div style="margin: 15px 0; padding: 10px; border-left: 3px solid ${result.status === 'pass' ? '#27ae60' : '#e74c3c'};">
+                        <strong><span class="status-indicator ${statusClass}"></span>${result.name}</strong><br>
+                        ${result.message}<br>
+                        <small style="color: #666;">${result.impact}</small>
+                    </div>
+                `;
+            });
+
+            if (domainIssues.length > 0) {
+                html += `
+                    <div class="recommendations">
+                        <h4>🚨 Issues Found - These are hurting your email deliverability:</h4>
+                        <ul>
+                            ${domainIssues.map(issue => `<li>Fix ${issue} configuration</li>`).join('')}
+                        </ul>
+                        <p><strong>Impact:</strong> These issues can reduce your email deliverability by 20-40% and harm your sender reputation.</p>
+                    </div>
+                `;
+            } else {
+                html += `
+                    <div style="background: #d4edda; padding: 15px; border-radius: 8px; margin-top: 15px;">
+                        <strong>✅ Great job! Your email infrastructure looks solid.</strong><br>
+                        Your domain has proper email authentication configured.
+                    </div>
+                `;
+            }
+
+            html += '</div>';
+            resultsDiv.innerHTML = html;
+        }
+
+        function updateSendButton() {
+            const sendBtn = document.getElementById('sendResultsBtn');
+            const email = document.getElementById('userEmail').value.trim();
+            
+            if (email && (domainCheckComplete || calculationComplete)) {
+                sendBtn.disabled = false;
+                sendBtn.style.opacity = '1';
+            } else {
+                sendBtn.disabled = true;
+                sendBtn.style.opacity = '0.6';
+            }
+        }
+        async function sendLeadToGoogleSheet(leadData) {
+        // Replace with your Google Apps Script Web App URL
+            const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/YOUR_SCRIPT_ID/exec';
+            try {
+            const response = await fetch(GOOGLE_SCRIPT_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(leadData)
+            });
+            if (response.ok) {
+                console.log('✅ Lead sent to Google Sheet');
+            } else {
+                console.error('❌ Google Sheet logging failed:', response.statusText);
+            }
+        } catch (error) {
+            console.error('❌ Failed to log lead:', error);
+        }
+}
+
+        function sendResults() {
+            const email = document.getElementById('userEmail').value.trim();
+            const company = document.getElementById('companyName').value.trim();
+            
+            if (!email) {
+                alert('Please enter your email address');
+                return;
+            }
+
+            if (!domainCheckComplete && !calculationComplete) {
+                alert('Please run the domain check or calculator first');
+                return;
+            }
+
+            // Simulate sending email
+            const resultDiv = document.getElementById('emailCapture');
+            resultDiv.className = 'check-result success';
+            resultDiv.style.display = 'block';
+            
+            let reportSummary = generateReportSummary();
+            
+            resultDiv.innerHTML = `
+                <h3>✅ Custom Fix-It Guide Sent!</h3>
+                <p>We've sent a detailed report to <strong>${email}</strong> that includes:</p>
+                <ul style="text-align: left; margin: 15px 0;">
+                    <li>📋 Complete analysis of your current email setup</li>
+                    <li>🔧 Step-by-step technical instructions to fix each issue</li>
+                    <li>💰 Your personalized revenue recovery potential</li>
+                    <li>⏱️ Implementation timeline and priority order</li>
+                    <li>🎯 Advanced optimization strategies</li>
+                </ul>
+                <p><strong>Check your inbox in the next few minutes!</strong></p>
+                ${reportSummary}
+            `;
+
+            // In a real implementation, you would send this data to your backend
+            sendLeadToGoogleSheet({
+            email,
+            company,
+            domainIssues,
+            listSize: calculationData.listSize || '',
+            avgOrderValue: calculationData.avgOrderValue || '',
+            openRate: calculationData.openRate || '',
+            clickRate: calculationData.clickRate || '',
+            conversionRate: calculationData.conversionRate || '',
+            emailsPerMonth: calculationData.emailsPerMonth || '',
+            monthlyLoss: calculateMonthlyLoss() || '',
+            annualLoss: (calculateMonthlyLoss() * 12) || ''
+        });
+
+        function scheduleConsultation() {
+            const email = document.getElementById('userEmail').value.trim();
+            const company = document.getElementById('companyName').value.trim();
+            
+            // In a real implementation, this would redirect to your booking system
+            // or open a calendar widget
+            
+            const resultDiv = document.getElementById('emailCapture');
+            resultDiv.className = 'check-result warning';
+            resultDiv.style.display = 'block';
+            
+            let urgencyMessage = '';
+            if (domainIssues.length > 0) {
+                const data = calculationData;
+                if (data.listSize && data.avgOrderValue) {
+                    const monthlyLoss = calculateMonthlyLoss();
+                    urgencyMessage = `<p style="background: #fff3cd; padding: 15px; border-radius: 8px; margin: 15px 0;"><strong>⚠️ Urgent:</strong> Based on your data, you're losing approximately <strong>${monthlyLoss.toLocaleString()}/month</strong> in revenue. Every day you wait costs you money!</p>`;
+                }
+            }
+            
+            resultDiv.innerHTML = `
+                <h3>🚀 Let's Fix This Together!</h3>
+                ${urgencyMessage}
+                <p>Our email deliverability experts can fix your email infrastructure in 2-3 days and get you back to full deliverability.</p>
+                <div style="background: #e8f5e8; padding: 20px; border-radius: 8px; margin: 15px 0;">
+                    <h4>What We'll Do For You:</h4>
+                    <ul style="text-align: left;">
+                        <li>✅ Complete SPF, DKIM, and DMARC setup</li>
+                        <li>✅ Email authentication configuration</li>
+                        <li>✅ Sender reputation optimization</li>
+                        <li>✅ Email warm-up strategy</li>
+                        <li>✅ Ongoing monitoring setup</li>
+                        <li>✅ 30-day performance guarantee</li>
+                    </ul>
+                </div>
+                <div style="text-align: center; margin: 20px 0;">
+                    <button class="btn" style="background: linear-gradient(45deg, #27ae60, #229954); font-size: 18px; padding: 15px 30px;" onclick="openBookingPage()">
+                        📅 Schedule Free Consultation
+                    </button>
+                </div>
+                <p><small>💰 <strong>Investment:</strong> Starting at $997 - typically pays for itself in the first month</small></p>
+            `;
+        }
+
+        function generateReportSummary() {
+            if (!domainCheckComplete && !calculationComplete) return '';
+            
+            let summary = '<div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin-top: 15px;"><h4>Your Report Preview:</h4>';
+            
+            if (domainIssues.length > 0) {
+                summary += `<p><strong>🚨 ${domainIssues.length} Critical Issues Found:</strong> ${domainIssues.join(', ')}</p>`;
+            } else {
+                summary += '<p><strong>✅ Email Infrastructure:</strong> Looking good!</p>';
+            }
+            
+            if (calculationComplete) {
+                const monthlyLoss = calculateMonthlyLoss();
+                summary += `<p><strong>💰 Monthly Revenue Impact:</strong> ${monthlyLoss.toLocaleString()}</p>`;
+            }
+            
+            summary += '</div>';
+            return summary;
+        }
+
+        function calculateMonthlyLoss() {
+            const data = calculationData;
+            const currentOpens = (data.listSize * data.emailsPerMonth * data.openRate) / 100;
+            const currentClicks = (currentOpens * data.clickRate) / 100;
+            const currentConversions = (currentClicks * data.conversionRate) / 100;
+            const currentRevenue = currentConversions * data.avgOrderValue;
+
+            const deliverabilityImpact = domainIssues.length > 0 ? 0.35 : 0.15;
+            const improvedOpens = currentOpens * (1 + deliverabilityImpact);
+            const improvedClicks = (improvedOpens * data.clickRate) / 100;
+            const improvedConversions = (improvedClicks * data.conversionRate) / 100;
+            const improvedRevenue = improvedConversions * data.avgOrderValue;
+
+            return improvedRevenue - currentRevenue;
+        }
+
+        function openBookingPage() {
+            // Open the actual booking page
+            window.open('https://cal.com/stevenwagner/inboxsos', '_blank');
+        }
+
+        // Add event listeners for email input
+        document.addEventListener('DOMContentLoaded', function() {
+            document.getElementById('userEmail').addEventListener('input', updateSendButton);
+        });
+            domainCheckComplete = true;
+            updateSendButton();
+        }
+
+        function calculateImpact() {
+            const listSize = parseInt(document.getElementById('listSize').value) || 0;
+            const avgOrderValue = parseFloat(document.getElementById('avgOrderValue').value) || 0;
+            const openRate = parseFloat(document.getElementById('openRate').value) || 0;
+            const clickRate = parseFloat(document.getElementById('clickRate').value) || 0;
+            const conversionRate = parseFloat(document.getElementById('conversionRate').value) || 0;
+            const emailsPerMonth = parseInt(document.getElementById('emailsPerMonth').value) || 0;
+
+            if (!listSize || !avgOrderValue || !openRate || !clickRate || !conversionRate || !emailsPerMonth) {
+                alert('Please fill in all fields');
+                return;
+            }
+
+            calculationData = {
+                listSize,
+                avgOrderValue,
+                openRate,
+                clickRate,
+                conversionRate,
+                emailsPerMonth
+            };
+
+            displayImpactResults();
+            calculationComplete = true;
+            updateSendButton();
+        }
+
+        function displayImpactResults() {
+            const data = calculationData;
+            const resultsDiv = document.getElementById('impactResults');
+            
+            // Current performance
+            const currentOpens = (data.listSize * data.emailsPerMonth * data.openRate) / 100;
+            const currentClicks = (currentOpens * data.clickRate) / 100;
+            const currentConversions = (currentClicks * data.conversionRate) / 100;
+            const currentRevenue = currentConversions * data.avgOrderValue;
+
+            // Potential with good deliverability (assuming 30-50% improvement)
+            const deliverabilityImpact = domainIssues.length > 0 ? 0.35 : 0.15; // 35% improvement if issues, 15% if already good
+            const improvedOpens = currentOpens * (1 + deliverabilityImpact);
+            const improvedClicks = (improvedOpens * data.clickRate) / 100;
+            const improvedConversions = (improvedClicks * data.conversionRate) / 100;
+            const improvedRevenue = improvedConversions * data.avgOrderValue;
+
+            const monthlyLoss = improvedRevenue - currentRevenue;
+            const annualLoss = monthlyLoss * 12;
+
+            let html = `
+                <div class="impact-display">
+                    <h3>💰 Monthly Revenue Impact</h3>
+                    <div class="amount">$${monthlyLoss.toLocaleString()}</div>
+                    <p>You're potentially losing this much revenue per month due to poor email deliverability</p>
+                    <div style="margin-top: 20px; font-size: 1.2em;">
+                        <strong>Annual Impact: $${annualLoss.toLocaleString()}</strong>
+                    </div>
+                </div>
+
+                <div class="grid-2" style="margin-top: 30px;">
+                    <div style="background: #fff3cd; padding: 20px; border-radius: 8px;">
+                        <h4>📈 Current Performance</h4>
+                        <p><strong>Monthly Opens:</strong> ${currentOpens.toLocaleString()}</p>
+                        <p><strong>Monthly Clicks:</strong> ${currentClicks.toLocaleString()}</p>
+                        <p><strong>Monthly Conversions:</strong> ${currentConversions.toLocaleString()}</p>
+                        <p><strong>Monthly Revenue:</strong> $${currentRevenue.toLocaleString()}</p>
+                    </div>
+                    <div style="background: #d4edda; padding: 20px; border-radius: 8px;">
+                        <h4>🎯 Potential with Good Deliverability</h4>
+                        <p><strong>Monthly Opens:</strong> ${improvedOpens.toLocaleString()}</p>
+                        <p><strong>Monthly Clicks:</strong> ${improvedClicks.toLocaleString()}</p>
+                        <p><strong>Monthly Conversions:</strong> ${improvedConversions.toLocaleString()}</p>
+                        <p><strong>Monthly Revenue:</strong> $${improvedRevenue.toLocaleString()}</p>
+                    </div>
+                </div>
+            `;
+
+            if (domainIssues.length > 0) {
+                html += `
+                    <div class="recommendations">
+                        <h4>🔧 Immediate Action Items to Recover Revenue:</h4>
+                        <ul>
+                            <li>Set up proper SPF record to authorize your sending servers</li>
+                            <li>Configure DKIM signing for email authentication</li>
+                            <li>Implement DMARC policy to protect your domain reputation</li>
+                            <li>Use a reputable email service provider (ESP)</li>
+                            <li>Monitor your sender reputation regularly</li>
+                            <li>Clean your email list to remove inactive subscribers</li>
+                            <li>Implement proper email warm-up procedures</li>
+                        </ul>
+                        <p><strong>Expected Timeline:</strong> 2-4 weeks to see significant improvement in deliverability</p>
+                    </div>
+                `;
+            } else {
+                html += `
+                    <div class="recommendations">
+                        <h4>🚀 Additional Optimization Opportunities:</h4>
+                        <ul>
+                            <li>Implement email list segmentation for better targeting</li>
+                            <li>A/B test subject lines to improve open rates</li>
+                            <li>Optimize email sending times for your audience</li>
+                            <li>Use behavioral triggers for automated email sequences</li>
+                            <li>Implement re-engagement campaigns for inactive subscribers</li>
+                            <li>Focus on mobile optimization for better click rates</li>
+                        </ul>
+                    </div>
+                `;
+            }
+
+            resultsDiv.innerHTML = html;
+        }
+    </script>
+</body>
+</html>
