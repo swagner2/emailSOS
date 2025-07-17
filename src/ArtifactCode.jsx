@@ -73,14 +73,20 @@ const EmailDeliveryChecker = () => {
 
   // Google Sheets integration
   const saveToGoogleSheets = async (data) => {
-    try {
-      // This would need your Google Apps Script URL or Google Sheets API integration
-      console.log('Saving to Google Sheets:', data);
-      // Implementation depends on your Google Sheets setup
-    } catch (error) {
-      console.error('Google Sheets error:', error);
-    }
-  };
+  try {
+    const response = await fetch('https://script.google.com/macros/s/AKfycbyLT6sLwtHfElUgHEnpqJORhOGlImMgEYHXQvWrKh8/dev', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(data)
+    });
+    return response.ok;
+  } catch (error) {
+    console.error('Google Sheets error:', error);
+    return false;
+  }
+};
 
   // DNS Record Checking using Google DNS API
   const checkDNSRecords = async (domain) => {
