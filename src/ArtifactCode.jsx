@@ -33,47 +33,104 @@ const EmailDeliveryChecker = () => {
     });
   };
 
-  const simulateDNSCheck = (domain) => {
-    const hasIssues = Math.random() > 0.3;
+  const checkDNSRecords = async (domain) => {
+    const results = [];
     
-    const spfResult = {
-      name: 'SPF Record',
-      status: hasIssues && Math.random() > 0.4 ? 'fail' : 'pass',
-      message: hasIssues && Math.random() > 0.4 ? 'No SPF record found or invalid syntax' : 'Valid SPF record found',
-      impact: 'SPF helps prevent email spoofing and improves deliverability'
-    };
+    try {
+      // Check SPF record
+      const spfResponse = await fetch(`https://dns.google/resolve?name=${domain}&type=TXT`);
+      const spfData = await spfResponse.json();
+      
+      const spfRecord = spfData.Answer?.find(record => 
+        record.data.replace(/"/g, '').includes('v=spf1')
+      );
+      
+      results.push({
+        name: 'SPF Record',
+        status: spfRecord ? 'pass' : 'fail',
+        message: spfRecord ? 
+          `Valid SPF record found: ${spfRecord.data.replace(/"/g, '').substring(0, 100)}${spfRecord.data.length > 100 ? '...' : ''}` : 
+          'No SPF record found - emails may be marked as spam',
+        impact: 'SPF helps prevent email spoofing and improves deliverability',
+        record: spfRecord?.data || null
+      });
 
-    const dkimResult = {
-      name: 'DKIM Record',
-      status: hasIssues && Math.random() > 0.5 ? 'fail' : 'pass',
-      message: hasIssues && Math.random() > 0.5 ? 'DKIM signature not found or invalid' : 'Valid DKIM signature detected',
-      impact: 'DKIM authenticates your emails and builds sender reputation'
-    };
+      // Check DMARC record
+      const dmarcResponse = await fetch(`https://dns.google/resolve?name=_dmarc.${domain}&type=TXT`);
+      const dmarcData = await dmarcResponse.json();
+      
+      const dmarcRecord = dmarcData.Answer?.find(record => 
+        record.data.replace(/"/g, '').includes('v=DMARC1')
+      );
+      
+      results.push({
+        name: 'DMARC Record',
+        status: dmarcRecord ? 'pass' : 'fail',
+        message: dmarcRecord ? 
+          `DMARC policy found: ${dmarcRecord.data.replace(/"/g, '').substring(0, 100)}${dmarcRecord.data.length > 100 ? '...' : ''}` : 
+          'No DMARC record found - domain vulnerable to spoofing',
+        impact: 'DMARC provides email authentication and protects your brand',
+        record: dmarcRecord?.data || null
+      });
 
-    const dmarcResult = {
-      name: 'DMARC Record',
-      status: hasIssues && Math.random() > 0.6 ? 'fail' : 'pass',
-      message: hasIssues && Math.random() > 0.6 ? 'No DMARC policy found' : 'DMARC policy is configured',
-      impact: 'DMARC provides email authentication and protects your brand'
-    };
+      // Check DKIM record (try common selectors)
+      const commonSelectors = ['google', 'k1', 'default', 'selector1', 'mail', 'dkim', 's1', 's2'];
+      let dkimFound = false;
+      let dkimRecord = null;
+      let dkimSelector = null;
 
-    const mxResult = {
-      name: 'MX Record',
-      status: 'pass',
-      message: 'Valid MX records found',
-      impact: 'MX records route your incoming emails properly'
-    };
-
-    const results = [spfResult, dkimResult, dmarcResult, mxResult];
-    
-    const issues = [];
-    results.forEach(result => {
-      if (result.status === 'fail') {
-        issues.push(result.name);
+      for (const selector of commonSelectors) {
+        try {
+          const dkimResponse = await fetch(`https://dns.google/resolve?name=${selector}._domainkey.${domain}&type=TXT`);
+          const dkimData = await dkimResponse.json();
+          
+          const record = dkimData.Answer?.find(record => {
+            const data = record.data.replace(/"/g, '');
+            return data.includes('v=DKIM1') || data.includes('k=rsa') || data.includes('k=ed25519') || data.includes('p=');
+          });
+          
+          if (record) {
+            dkimFound = true;
+            dkimRecord = record.data;
+            dkimSelector = selector;
+            break;
+          }
+        } catch (error) {
+          // Continue to next selector
+        }
       }
-    });
 
-    return { results, issues };
+      results.push({
+        name: 'DKIM Record',
+        status: dkimFound ? 'pass' : 'fail',
+        message: dkimFound ? 
+          `DKIM record found at ${dkimSelector}._domainkey.${domain}` : 
+          'No DKIM record found (checked common selectors) - emails may lack authentication',
+        impact: 'DKIM authenticates your emails and builds sender reputation',
+        record: dkimRecord
+      });
+
+      // Check MX record
+      const mxResponse = await fetch(`https://dns.google/resolve?name=${domain}&type=MX`);
+      const mxData = await mxResponse.json();
+      
+      const mxRecords = mxData.Answer || [];
+      results.push({
+        name: 'MX Record',
+        status: mxRecords.length > 0 ? 'pass' : 'fail',
+        message: mxRecords.length > 0 ? 
+          `${mxRecords.length} MX record(s) found: ${mxRecords[0]?.data || 'Valid mail server'}` : 
+          'No MX records found - cannot receive emails',
+        impact: 'MX records route your incoming emails properly',
+        record: mxRecords[0]?.data || null
+      });
+
+      return results;
+      
+    } catch (error) {
+      console.error('DNS check failed:', error);
+      throw new Error('Unable to check DNS records. Please check your internet connection and try again.');
+    }
   };
 
   const checkDomain = async () => {
@@ -82,17 +139,31 @@ const EmailDeliveryChecker = () => {
       return;
     }
 
+    // Clean domain input
+    const cleanDomain = formData.domain.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0];
+    
     setIsLoading(true);
     setDomainResults('');
     setDomainIssues([]);
 
-    setTimeout(() => {
-      const { results, issues } = simulateDNSCheck(formData.domain);
+    try {
+      const results = await checkDNSRecords(cleanDomain);
+      
+      // Track issues for impact calculation
+      const issues = results
+        .filter(result => result.status === 'fail')
+        .map(result => result.name);
+      
       setDomainIssues(issues);
       displayDomainResults(results);
       setDomainCheckComplete(true);
+      
+    } catch (error) {
+      console.error('Domain check failed:', error);
+      alert(error.message || 'Failed to check domain. Please try again.');
+    } finally {
       setIsLoading(false);
-    }, 2000);
+    }
   };
 
   const displayDomainResults = (results) => {
@@ -169,11 +240,56 @@ const EmailDeliveryChecker = () => {
       return;
     }
 
-    // Show full results and add to Klaviyo
+    // Show full results and add to calculator list
     displayImpactResults(calculationData);
     setCalculationComplete(true);
-    addToKlaviyo(formData.userEmail, formData.companyName).catch(console.error);
+    addToKlaviyo(formData.userEmail, formData.companyName, 'calculator').catch(console.error);
   };
+
+  const sendGuide = async () => {
+    if (!formData.userEmail) {
+      alert('Please enter your email address');
+      return;
+    }
+
+    if (!domainCheckComplete && !calculationComplete) {
+      alert('Please run the domain check or calculator first');
+      return;
+    }
+
+    try {
+      // Add to guide request list
+      await addToKlaviyo(formData.userEmail, formData.companyName, 'guide');
+      
+      const reportSummary = generateReportSummary();
+      
+      setEmailCapture(
+        <div className="mt-5 p-5 bg-green-50 border border-green-200 rounded-lg">
+          <h3 className="text-lg font-semibold mb-3">✅ Custom Fix-It Guide Sent!</h3>
+          <p>We've sent a detailed report to <strong>{formData.userEmail}</strong> that includes:</p>
+          <ul className="list-disc pl-6 my-4">
+            <li>📋 Complete analysis of your current email setup</li>
+            <li>🔧 Step-by-step technical instructions to fix each issue</li>
+            <li>💰 Your personalized revenue recovery potential</li>
+            <li>⏱️ Implementation timeline and priority order</li>
+            <li>🎯 Advanced optimization strategies</li>
+          </ul>
+          <p><strong>Check your inbox in the next few minutes!</strong></p>
+          {reportSummary}
+        </div>
+      );
+    } catch (error) {
+      console.error('Error sending results:', error);
+      setEmailCapture(
+        <div className="mt-5 p-5 bg-yellow-50 border border-yellow-200 rounded-lg">
+          <h3 className="text-lg font-semibold mb-3">⚠️ Almost There!</h3>
+          <p>We're processing your request for <strong>{formData.userEmail}</strong>. You should receive your custom fix-it guide shortly.</p>
+        </div>
+      );
+    }
+  };
+
+
 
   const displayBlurredResults = (data) => {
     const currentOpens = (data.listSize * data.emailsPerMonth * data.openRate) / 100;
@@ -366,9 +482,22 @@ const EmailDeliveryChecker = () => {
     return improvedRevenue - currentRevenue;
   };
 
-  const addToKlaviyo = async (email, company) => {
+  const addToKlaviyo = async (email, company, listType = 'calculator') => {
     const KLAVIYO_PUBLIC_KEY = 'Mzfpkb';
-    const klaviyoSignupUrl = 'https://www.klaviyo.com/list/TCapS8';
+    
+    // Different lists for different actions
+    const listUrls = {
+      calculator: 'https://www.klaviyo.com/list/TCapS8',  // Revenue calculator results
+      guide: 'https://www.klaviyo.com/list/U42FCU'        // Fix-it guide requests
+    };
+    
+    const listIds = {
+      calculator: 'TCapS8',
+      guide: 'U42FCU'
+    };
+    
+    const klaviyoSignupUrl = listUrls[listType];
+    const listId = listIds[listType];
     
     try {
       // Prepare the profile data
@@ -377,10 +506,11 @@ const EmailDeliveryChecker = () => {
         properties: {
           first_name: company ? company.split(' ')[0] : '',
           company: company || '',
-          source: 'Email Delivery Checker',
+          source: listType === 'calculator' ? 'Email Delivery Checker - Calculator' : 'Email Delivery Checker - Guide Request',
           domain_issues: domainIssues.join(', ') || 'None detected',
           domain_issues_count: domainIssues.length,
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
+          list_type: listType
         }
       };
 
@@ -421,7 +551,7 @@ const EmailDeliveryChecker = () => {
           const profile = await response.json();
           
           // Add to the specific list
-          await fetch(`https://a.klaviyo.com/api/lists/TCapS8/relationships/profiles/`, {
+          await fetch(`https://a.klaviyo.com/api/lists/${listId}/relationships/profiles/`, {
             method: 'POST',
             headers: {
               'Authorization': `Klaviyo-API-Key ${KLAVIYO_PUBLIC_KEY}`,
@@ -436,8 +566,8 @@ const EmailDeliveryChecker = () => {
             })
           });
 
-          console.log('Successfully added to Klaviyo via API');
-          return { success: true, method: 'api' };
+          console.log(`Successfully added to Klaviyo ${listType} list via API`);
+          return { success: true, method: 'api', listType };
         }
       } catch (apiError) {
         console.log('API method failed, trying list signup URL:', apiError);
@@ -446,7 +576,6 @@ const EmailDeliveryChecker = () => {
       // Method 2: Use list signup URL with form submission
       const formData = new FormData();
       formData.append('email', email);
-      formData.append('$fields', 'email,company,source,domain_issues,list_size,monthly_revenue_loss');
       
       // Add custom properties
       Object.entries(profileData.properties).forEach(([key, value]) => {
@@ -462,8 +591,8 @@ const EmailDeliveryChecker = () => {
           mode: 'no-cors'
         });
         
-        console.log('Successfully submitted to Klaviyo list signup');
-        return { success: true, method: 'list_signup' };
+        console.log(`Successfully submitted to Klaviyo ${listType} list signup`);
+        return { success: true, method: 'list_signup', listType };
         
       } catch (listError) {
         console.log('List signup failed, trying iframe method:', listError);
@@ -472,13 +601,13 @@ const EmailDeliveryChecker = () => {
       // Method 3: Hidden iframe method (most reliable for cross-origin)
       const iframe = document.createElement('iframe');
       iframe.style.display = 'none';
-      iframe.name = 'klaviyo-signup';
+      iframe.name = `klaviyo-signup-${listType}`;
       document.body.appendChild(iframe);
 
       const form = document.createElement('form');
       form.method = 'POST';
       form.action = klaviyoSignupUrl;
-      form.target = 'klaviyo-signup';
+      form.target = `klaviyo-signup-${listType}`;
 
       // Add all the profile data as hidden fields
       Object.entries({
@@ -503,20 +632,21 @@ const EmailDeliveryChecker = () => {
         document.body.removeChild(iframe);
       }, 2000);
 
-      console.log('Successfully submitted via iframe method');
-      return { success: true, method: 'iframe' };
+      console.log(`Successfully submitted via iframe method to ${listType} list`);
+      return { success: true, method: 'iframe', listType };
 
     } catch (error) {
-      console.error('All Klaviyo methods failed:', error);
+      console.error(`All Klaviyo methods failed for ${listType} list:`, error);
       
       // Final fallback - log for manual processing
       const leadData = {
         email,
         company: company || '',
-        source: 'Email Delivery Checker',
+        source: `Email Delivery Checker - ${listType}`,
         domain_issues: domainIssues.join(', ') || 'None detected',
         domain_issues_count: domainIssues.length,
         timestamp: new Date().toISOString(),
+        list_type: listType,
         calculation_data: calculationData.listSize ? {
           list_size: calculationData.listSize,
           avg_order_value: calculationData.avgOrderValue,
@@ -529,16 +659,9 @@ const EmailDeliveryChecker = () => {
         } : null
       };
 
-      console.log('MANUAL PROCESSING NEEDED - Klaviyo lead data:', leadData);
+      console.log(`MANUAL PROCESSING NEEDED - Klaviyo ${listType} lead data:`, leadData);
       
-      // You could also send this to your own backend as a backup
-      // fetch('/api/backup-lead-capture', { 
-      //   method: 'POST', 
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify(leadData) 
-      // });
-      
-      throw new Error('All Klaviyo integration methods failed');
+      throw new Error(`All Klaviyo integration methods failed for ${listType} list`);
     }
   };
 
@@ -664,9 +787,12 @@ const EmailDeliveryChecker = () => {
                 name="domain"
                 value={formData.domain}
                 onChange={handleInputChange}
-                placeholder="example.com"
+                placeholder="yourdomain.com"
                 className="w-full p-3 border-2 border-gray-200 rounded-lg text-lg focus:border-blue-500 focus:outline-none"
               />
+              <p className="text-sm text-gray-500 mt-1">
+                Enter just the domain name without "www" or "https://"
+              </p>
             </div>
             <button
               onClick={checkDomain}
@@ -678,7 +804,8 @@ const EmailDeliveryChecker = () => {
             {isLoading && (
               <div className="text-center py-5">
                 <div className="inline-block w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-3"></div>
-                <p>Checking your domain's email records...</p>
+                <p>Checking DNS records for {formData.domain.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0]}...</p>
+                <p className="text-sm text-gray-500">This may take a few seconds</p>
               </div>
             )}
             
@@ -690,26 +817,48 @@ const EmailDeliveryChecker = () => {
             <h2 className="text-2xl font-semibold text-gray-800 mb-3">📧 Get Your Custom Fix-It Guide</h2>
             <p className="mb-5 text-gray-600">
               {calculationComplete ? 
-                "Your detailed report has been automatically sent! Want to take immediate action?" : 
-                "Complete the calculator above to receive a detailed report with step-by-step instructions."
+                "Want a detailed step-by-step guide to fix these issues?" : 
+                "Complete the domain check or calculator above to receive a detailed report with step-by-step instructions."
               }
             </p>
-            {calculationComplete && (
+            
+            {!calculationComplete && (
               <div className="mb-5">
-                <button
-                  onClick={scheduleConsultation}
-                  className="bg-gradient-to-r from-red-500 to-red-600 text-white px-6 py-3 rounded-lg font-semibold hover:from-red-600 hover:to-red-700 transition-all mr-3"
-                >
-                  🚀 Hire Us to Fix This For You
-                </button>
-                <button
-                  onClick={() => window.open('mailto:' + formData.userEmail, '_blank')}
-                  className="bg-gradient-to-r from-gray-500 to-gray-600 text-white px-6 py-3 rounded-lg font-semibold hover:from-gray-600 hover:to-gray-700 transition-all"
-                >
-                  📨 Check Your Email
-                </button>
+                <label className="block mb-2 font-semibold text-gray-700">Your Email Address:</label>
+                <input
+                  type="email"
+                  name="userEmail"
+                  value={formData.userEmail}
+                  onChange={handleInputChange}
+                  placeholder="you@yourdomain.com"
+                  className="w-full p-3 border-2 border-gray-200 rounded-lg text-lg focus:border-blue-500 focus:outline-none"
+                />
               </div>
             )}
+
+            <div className="flex flex-wrap gap-3">
+              {(domainCheckComplete || calculationComplete) && (
+                <button
+                  onClick={sendGuide}
+                  disabled={!formData.userEmail}
+                  className={`px-6 py-3 rounded-lg font-semibold transition-all ${
+                    formData.userEmail
+                      ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white hover:from-blue-600 hover:to-blue-700'
+                      : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                  }`}
+                >
+                  📨 Send Me the Fix-It Guide
+                </button>
+              )}
+              
+              {/* Show consultation button after any check is complete OR always show it */}
+              <button
+                onClick={() => window.open('https://cal.com/stevenwagner/inboxsos', '_blank')}
+                className="bg-gradient-to-r from-red-500 to-red-600 text-white px-6 py-3 rounded-lg font-semibold hover:from-red-600 hover:to-red-700 transition-all"
+              >
+                🚀 Schedule Free Consultation
+              </button>
+            </div>
             
             {emailCapture}
           </div>
