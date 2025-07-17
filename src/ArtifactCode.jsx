@@ -1,482 +1,159 @@
-import React, { useState, useEffect, useRef } from 'react';
+/* EmailDeliveryChecker.css */
+:root {
+  --primary: #4f46e5;
+  --primary-light: #818cf8;
+  --success: #10b981;
+  --warning: #f59e0b;
+  --danger: #ef4444;
+  --gray-100: #f3f4f6;
+  --gray-200: #e5e7eb;
+  --gray-300: #d1d5db;
+  --gray-600: #4b5563;
+  --gray-700: #374151;
+  --gray-800: #1f2937;
+  --gray-900: #111827;
+}
 
-const EmailDeliveryChecker = () => {
-  const [domain, setDomain] = useState('');
-  const [email, setEmail] = useState('');
-  const [domainResults, setDomainResults] = useState(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [showEmailForm, setShowEmailForm] = useState(false);
-  const [calculatorData, setCalculatorData] = useState({
-    listSize: '',
-    openRate: '',
-    clickRate: '',
-    conversionRate: '',
-    emailsPerMonth: '',
-  });
-  const [calculationResults, setCalculationResults] = useState(null);
-  const [error, setError] = useState('');
-  const resultsRef = useRef(null);
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
 
-  // Styles object to replace the CSS file
-  const styles = {
-    container: {
-      fontFamily: 'Inter, sans-serif',
-      lineHeight: 1.5,
-      color: '#1f2937',
-      background: '#f9fafb',
-    },
-    header: {
-      background: 'linear-gradient(135deg, #0f2b5a 0%, #4f46e5 100%)',
-      color: 'white',
-      padding: '3rem 1rem',
-      textAlign: 'center',
-    },
-    h1: {
-      fontSize: '2.25rem',
-      fontWeight: 700,
-      marginBottom: '1rem',
-    },
-    subtitle: {
-      fontSize: '1.25rem',
-      maxWidth: '800px',
-      margin: '0 auto 1rem',
-    },
-    highlight: {
-      fontWeight: 600,
-      fontSize: '1.125rem',
-      marginTop: '1.5rem',
-    },
-    section: {
-      padding: '3rem 1rem',
-      maxWidth: '1200px',
-      margin: '0 auto',
-    },
-    h2: {
-      fontSize: '1.5rem',
-      fontWeight: 600,
-      marginBottom: '1.5rem',
-      textAlign: 'center',
-    },
-    sectionDescription: {
-      textAlign: 'center',
-      marginBottom: '2rem',
-    },
-    domainForm: {
-      display: 'flex',
-      maxWidth: '600px',
-      margin: '0 auto 2rem',
-      gap: '0.5rem',
-      flexWrap: 'wrap',
-    },
-    domainInput: {
-      flex: '1',
-      padding: '0.75rem 1rem',
-      borderRadius: '0.375rem',
-      border: '1px solid #d1d5db',
-      fontSize: '1rem',
-      minWidth: '250px',
-    },
-    button: {
-      backgroundColor: '#4f46e5',
-      color: 'white',
-      fontWeight: 600,
-      padding: '0.75rem 1.5rem',
-      borderRadius: '0.375rem',
-      border: 'none',
-      cursor: 'pointer',
-      transition: 'background-color 0.2s',
-    },
-    errorMessage: {
-      color: '#ef4444',
-      textAlign: 'center',
-      marginBottom: '1rem',
-    },
-    resultsContainer: {
-      backgroundColor: '#f0fdf4',
-      borderRadius: '0.5rem',
-      padding: '1.5rem',
-      maxWidth: '800px',
-      margin: '0 auto',
-      border: '1px solid #d1fae5',
-    },
-    resultItem: {
-      display: 'flex',
-      alignItems: 'center',
-      marginBottom: '1rem',
-      borderLeft: '4px solid #10b981',
-      paddingLeft: '1rem',
-    },
-    statusIndicator: {
-      width: '12px',
-      height: '12px',
-      borderRadius: '50%',
-      marginRight: '1rem',
-    },
-    valid: {
-      backgroundColor: '#10b981',
-    },
-    missing: {
-      backgroundColor: '#ef4444',
-    },
-    warning: {
-      backgroundColor: '#f59e0b',
-    },
-    overallStatus: {
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      marginTop: '2rem',
-      padding: '1.5rem',
-      borderRadius: '0.5rem',
-      backgroundColor: 'rgba(16, 185, 129, 0.1)',
-    },
-    good: {
-      backgroundColor: 'rgba(16, 185, 129, 0.1)',
-    },
-    critical: {
-      backgroundColor: 'rgba(239, 68, 68, 0.1)',
-    },
-    statusIcon: {
-      fontSize: '2rem',
-      marginBottom: '0.5rem',
-    },
-    nextStep: {
-      marginTop: '1rem',
-      fontWeight: 500,
-    },
-    testimonialGrid: {
-      display: 'flex',
-      flexWrap: 'wrap',
-      gap: '2rem',
-      justifyContent: 'center',
-      margin: '2rem 0',
-    },
-    testimonialCard: {
-      display: 'flex',
-      padding: '1.5rem',
-      backgroundColor: 'white',
-      borderRadius: '0.5rem',
-      boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
-      width: '300px',
-    },
-    testimonialAvatar: {
-      width: '50px',
-      height: '50px',
-      borderRadius: '50%',
-      backgroundColor: '#e5e7eb',
-      marginRight: '1rem',
-    },
-    testimonialText: {
-      flex: 1,
-    },
-    testimonialAuthor: {
-      fontWeight: 600,
-      marginTop: '0.5rem',
-    },
-    calculatorForm: {
-      maxWidth: '800px',
-      margin: '0 auto',
-    },
-    calculatorIntro: {
-      textAlign: 'center',
-      marginBottom: '2rem',
-      fontWeight: 500,
-    },
-    formRow: {
-      display: 'flex',
-      flexWrap: 'wrap',
-      gap: '1.5rem',
-      marginBottom: '1.5rem',
-    },
-    formGroup: {
-      flex: '1',
-      minWidth: '250px',
-    },
-    label: {
-      display: 'block',
-      marginBottom: '0.5rem',
-      fontWeight: 500,
-    },
-    input: {
-      width: '100%',
-      padding: '0.75rem',
-      borderRadius: '0.375rem',
-      border: '1px solid #d1d5db',
-      fontSize: '1rem',
-    },
-    calculateButton: {
-      backgroundColor: '#4f46e5',
-      color: 'white',
-      fontWeight: 600,
-      padding: '0.75rem 1.5rem',
-      borderRadius: '0.375rem',
-      border: 'none',
-      cursor: 'pointer',
-      transition: 'background-color 0.2s',
-      display: 'block',
-      margin: '2rem auto 0',
-    },
-    calculationResults: {
-      maxWidth: '800px',
-      margin: '2rem auto 0',
-      padding: '2rem',
-      borderRadius: '0.5rem',
-      backgroundColor: 'white',
-      boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
-      textAlign: 'center',
-    },
-    impactHeading: {
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      fontSize: '1.25rem',
-      fontWeight: 600,
-      marginBottom: '1.5rem',
-      color: '#ef4444',
-    },
-    impactAmount: {
-      fontSize: '3rem',
-      fontWeight: 700,
-      color: '#ef4444',
-      marginBottom: '1rem',
-    },
-    impactDescription: {
-      marginBottom: '1rem',
-    },
-    annualImpact: {
-      fontWeight: 600,
-      marginBottom: '2rem',
-    },
-    fixItButton: {
-      backgroundColor: '#10b981',
-      color: 'white',
-      fontWeight: 600,
-      padding: '0.75rem 1.5rem',
-      borderRadius: '0.375rem',
-      border: 'none',
-      cursor: 'pointer',
-      transition: 'background-color 0.2s',
-    },
-    emailCaptureOverlay: {
-      position: 'relative',
-    },
-    emailFormContainer: {
-      maxWidth: '600px',
-      margin: '0 auto',
-      padding: '2rem',
-      backgroundColor: 'white',
-      borderRadius: '0.5rem',
-      boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
-      zIndex: 10,
-      position: 'relative',
-    },
-    emailForm: {
-      display: 'flex',
-      flexDirection: 'column',
-      gap: '1rem',
-    },
-    emailInput: {
-      padding: '0.75rem',
-      borderRadius: '0.375rem',
-      border: '1px solid #d1d5db',
-      fontSize: '1rem',
-    },
-    submitButton: {
-      backgroundColor: '#10b981',
-      color: 'white',
-      fontWeight: 600,
-      padding: '0.75rem 1.5rem',
-      borderRadius: '0.375rem',
-      border: 'none',
-      cursor: 'pointer',
-      transition: 'background-color 0.2s',
-    },
-    blurredResults: {
-      filter: 'blur(5px)',
-      pointerEvents: 'none',
-      userSelect: 'none',
-      position: 'absolute',
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      zIndex: 5,
-    },
-    footer: {
-      backgroundColor: '#1f2937',
-      color: 'white',
-      padding: '3rem 1rem',
-    },
-    footerContent: {
-      maxWidth: '1200px',
-      margin: '0 auto',
-      textAlign: 'center',
-    },
-    footerLinks: {
-      display: 'flex',
-      justifyContent: 'center',
-      gap: '2rem',
-      flexWrap: 'wrap',
-      marginBottom: '1.5rem',
-    },
-    footerLink: {
-      color: 'white',
-      textDecoration: 'none',
-    },
-    copyright: {
-      color: '#9ca3af',
-    },
-    logoContainer: {
-      display: 'flex',
-      justifyContent: 'center',
-      flexWrap: 'wrap',
-      gap: '2rem',
-      margin: '2rem 0',
-    },
-    logo: {
-      width: '120px',
-      height: '60px',
-      backgroundColor: '#e5e7eb',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      borderRadius: '0.25rem',
-    },
-    testimonialSection: {
-      backgroundColor: '#f3f4f6',
-      padding: '3rem 1rem',
-      textAlign: 'center',
-    },
-    testimonialContent: {
-      maxWidth: '800px',
-      margin: '0 auto',
-    },
-    blockquote: {
-      fontSize: '1.25rem',
-      fontStyle: 'italic',
-      marginBottom: '1rem',
-    },
-    cite: {
-      fontWeight: 600,
-    },
-    videoSection: {
-      padding: '3rem 1rem',
-      textAlign: 'center',
-    },
-    videoContainer: {
-      maxWidth: '800px',
-      margin: '0 auto',
-      aspectRatio: '16/9',
-      overflow: 'hidden',
-      borderRadius: '0.5rem',
-    },
-    iframe: {
-      width: '100%',
-      height: '100%',
-      border: 'none',
-    }
-  };
+body {
+  font-family: 'Inter', sans-serif;
+  line-height: 1.5;
+  color: var(--gray-800);
+  background: #f9fafb;
+}
 
-  const handleDomainCheck = async (e) => {
-    e.preventDefault();
-    if (!domain) {
-      setError('Please enter a domain');
-      return;
-    }
+.container {
+  width: 100%;
+  max-width: 100%;
+  margin: 0 auto;
+}
 
-    setIsLoading(true);
-    setError('');
-    
-    try {
-      // Log domain visit even without email
-      await fetch('/api/log-domain', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ domain }),
-      });
-      
-      const response = await fetch('/api/check-domain', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ domain }),
-      });
-      
-      if (!response.ok) {
-        throw new Error('Failed to check domain');
-      }
-      
-      const data = await response.json();
-      setDomainResults(data);
-      setShowEmailForm(true);
-      
-      if (resultsRef.current) {
-        resultsRef.current.scrollIntoView({ behavior: 'smooth' });
-      }
-    } catch (err) {
-      setError(err.message || 'An error occurred');
-    } finally {
-      setIsLoading(false);
-    }
-  };
+header {
+  background: linear-gradient(135deg, #0f2b5a 0%, #4f46e5 100%);
+  color: white;
+  padding: 3rem 1rem;
+  text-align: center;
+}
 
-  const handleCalculateROI = async (e) => {
-    e.preventDefault();
-    
-    setIsLoading(true);
-    setError('');
-    
-    try {
-      const response = await fetch('/api/calculate-roi', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(calculatorData),
-      });
-      
-      if (!response.ok) {
-        throw new Error('Failed to calculate ROI');
-      }
-      
-      const data = await response.json();
-      setCalculationResults(data);
-    } catch (err) {
-      setError(err.message || 'An error occurred');
-    } finally {
-      setIsLoading(false);
-    }
-  };
+h1 {
+  font-size: 2.25rem;
+  font-weight: 700;
+  margin-bottom: 1rem;
+}
 
-  const handleEmailSubmit = async (e) => {
-    e.preventDefault();
-    
-    if (!email) {
-      setError('Please enter your email address');
-      return;
-    }
-    
-    setIsLoading(true);
-    setError('');
-    
-    try {
-      const response = await fetch('/api/submit-email', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email,
-          domain,
-          results: domainResults,
-          calculatorData,
-        }),
-      });
-      
-      if (!response.ok) {
-        throw new Error('Failed to submit email');
-      }
-      
-      // Success - email submitted
-      setShowEmailForm(false);
-    } catch (err) {
-      setError(err.message || 'An error occurred');
-    } finally {
-      setIsLoading(false);
-    }
-  };
+.subtitle {
+  font-size: 1.25rem;
+  max-width: 800px;
+  margin: 0 auto 1rem;
+}
+
+.highlight {
+  font-weight: 600;
+  font-size: 1.125rem;
+  margin-top: 1.5rem;
+}
+
+section {
+  padding: 3rem 1rem;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+h2 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin-bottom: 1.5rem;
+  text-align: center;
+}
+
+.section-description {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.domain-form {
+  display: flex;
+  max-width: 600px;
+  margin: 0 auto 2rem;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.domain-input {
+  flex: 1;
+  padding: 0.75rem 1rem;
+  border-radius: 0.375rem;
+  border: 1px solid var(--gray-300);
+  font-size: 1rem;
+  min-width: 250px;
+}
+
+.check-button, .calculate-button, .submit-button, .fix-it-button {
+  background-color: var(--primary);
+  color: white;
+  font-weight: 600;
+  padding: 0.75rem 1.5rem;
+  border-radius: 0.375rem;
+  border: none;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.check-button:hover, .calculate-button:hover, .submit-button:hover, .fix-it-button:hover {
+  background-color: var(--primary-light);
+}
+
+.error-message {
+  color: var(--danger);
+  text-align: center;
+  margin-bottom: 1rem;
+}
+
+.results-container {
+  background-color: #f0fdf4;
+  border-radius: 0.5rem;
+  padding: 1.5rem;
+  max-width: 800px;
+  margin: 0 auto;
+  border: 1px solid #d1fae5;
+}
+
+.result-item {
+  display: flex;
+  align-items: center;
+  margin-bottom: 1rem;
+  border-left: 4px solid var(--success);
+  padding-left: 1rem;
+}
+
+.status-indicator {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  margin-right: 1rem;
+}
+
+.status-indicator.valid {
+  background-color: var(--success);
+}
+
+.status-indicator.missing {
+  background-color: var(--danger);
+}
+
+.status-indicator.warning {
+  background-color: var(--warning);
+}
+
+.overall-status {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-top: 2rem;
+  padding: 1.5rem;
+  border-radius: 0.5rem;
