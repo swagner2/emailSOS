@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef } from 'react';
-// Remove this line: import './EmailDeliveryChecker.css';
 
 const EmailDeliveryChecker = () => {
   const [domain, setDomain] = useState('');
