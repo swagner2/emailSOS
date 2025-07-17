@@ -35,16 +35,10 @@ const EmailDeliveryChecker = () => {
 
   const logToGoogleSheets = async (data) => {
     try {
-      // Google Sheets API endpoint
-      const SHEET_ID = '1txSIvvKuQj6bxKkoYqxBPadip9iPTam2G4yLvJRYTRM';
-      const API_KEY = 'AIzaSyDUuXgWxY9bW89DI3PULRRUEck86YnayBE'; // You'll need to replace this
+      // Google Apps Script Web App URL (replace with your actual URL)
+      const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzvN7mOucgh41Q06Qi09UuTxjIp8FtIjuZQTaCcJrFq9-mW8Ps7rFsVG5-s6aD2DudI/exec';
       
-      // For now, we'll use a simpler approach via Google Apps Script
-      // This is a more reliable method for client-side integration
-      
-      // Method 1: Google Apps Script Web App (Recommended)
-      const APPS_SCRIPT_URL = 'Google-App-Script-URL'; // You'll need to create this
-      
+      // Method 1: Google Apps Script (Recommended)
       try {
         const response = await fetch(APPS_SCRIPT_URL, {
           method: 'POST',
@@ -54,58 +48,105 @@ const EmailDeliveryChecker = () => {
           body: JSON.stringify(data)
         });
         
-        if (response.ok) {
-          console.log('Data logged to Google Sheets successfully');
+        const result = await response.json();
+        console.log('Google Sheets response:', result);
+        
+        if (result.success) {
+          console.log('Data successfully logged to Google Sheets');
           return { success: true, method: 'apps_script' };
+        } else {
+          throw new Error(result.error || 'Apps Script failed');
         }
+        
       } catch (appsScriptError) {
-        console.log('Apps Script method failed, trying direct API');
-      }
-      
-      // Method 2: Direct Google Sheets API (requires API key)
-      const range = 'Sheet1!A:M'; // Adjust range as needed
-      const valueInputOption = 'RAW';
-      
-      const values = [[
-        new Date().toISOString(), // Timestamp
-        data.domain || '',
-        data.email || '',
-        data.company || '',
-        data.spf_status || '',
-        data.dkim_status || '',
-        data.dmarc_status || '',
-        data.mx_status || '',
-        data.domain_issues_count || 0,
-        data.list_size || '',
-        data.avg_order_value || '',
-        data.monthly_revenue_loss || '',
-        data.annual_revenue_loss || ''
-      ]];
-      
-      const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${range}:append?valueInputOption=${valueInputOption}&key=${API_KEY}`;
-      
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          values: values
-        })
-      });
-      
-      if (response.ok) {
-        console.log('Data logged to Google Sheets via API');
-        return { success: true, method: 'direct_api' };
-      } else {
-        throw new Error('Google Sheets API failed');
+        console.log('Apps Script method failed:', appsScriptError);
+        
+        // Method 2: Try direct Google Sheets API as fallback
+        const SHEET_ID = '1txSIvvKuQj6bxKkoYqxBPadip9iPTam2G4yLvJRYTRM';
+        const API_KEY = 'YOUR_GOOGLE_API_KEY'; // Replace with your actual API key
+        
+        if (API_KEY && API_KEY !== 'YOUR_GOOGLE_API_KEY') {
+          try {
+            const range = 'Sheet1!A:S'; // Adjust range as needed
+            const valueInputOption = 'RAW';
+            
+            const values = [[
+              data.timestamp || new Date().toISOString(),
+              data.domain || '',
+              data.email || '',
+              data.company || '',
+              data.spf_status || '',
+              data.dkim_status || '',
+              data.dmarc_status || '',
+              data.mx_status || '',
+              data.domain_issues_count || 0,
+              data.list_size || '',
+              data.avg_order_value || '',
+              data.open_rate || '',
+              data.click_rate || '',
+              data.conversion_rate || '',
+              data.emails_per_month || '',
+              data.monthly_revenue_loss || '',
+              data.annual_revenue_loss || '',
+              data.list_type || '',
+              data.source || ''
+            ]];
+            
+            const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${range}:append?valueInputOption=${valueInputOption}&key=${API_KEY}`;
+            
+            const response = await fetch(url, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                values: values
+              })
+            });
+            
+            if (response.ok) {
+              console.log('Data logged to Google Sheets via API');
+              return { success: true, method: 'direct_api' };
+            } else {
+              const errorText = await response.text();
+              throw new Error(`Google Sheets API failed: ${response.status} - ${errorText}`);
+            }
+          } catch (apiError) {
+            console.error('Google Sheets API failed:', apiError);
+            throw apiError;
+          }
+        } else {
+          throw new Error('No API key configured and Apps Script failed');
+        }
       }
       
     } catch (error) {
       console.error('Failed to log to Google Sheets:', error);
       
       // Fallback: Log to console for manual entry
-      console.log('MANUAL GOOGLE SHEETS ENTRY NEEDED:', data);
+      console.log('🔴 MANUAL GOOGLE SHEETS ENTRY NEEDED:');
+      console.log('Copy this data to your Google Sheet:');
+      console.table([{
+        Timestamp: data.timestamp || new Date().toISOString(),
+        Domain: data.domain || '',
+        Email: data.email || '',
+        Company: data.company || '',
+        'SPF Status': data.spf_status || '',
+        'DKIM Status': data.dkim_status || '',
+        'DMARC Status': data.dmarc_status || '',
+        'MX Status': data.mx_status || '',
+        'Domain Issues Count': data.domain_issues_count || 0,
+        'List Size': data.list_size || '',
+        'Avg Order Value': data.avg_order_value || '',
+        'Open Rate': data.open_rate || '',
+        'Click Rate': data.click_rate || '',
+        'Conversion Rate': data.conversion_rate || '',
+        'Emails Per Month': data.emails_per_month || '',
+        'Monthly Revenue Loss': data.monthly_revenue_loss || '',
+        'Annual Revenue Loss': data.annual_revenue_loss || '',
+        'List Type': data.list_type || '',
+        'Source': data.source || ''
+      }]);
       
       return { success: false, error: error.message };
     }
