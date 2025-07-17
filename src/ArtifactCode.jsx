@@ -33,6 +33,84 @@ const EmailDeliveryChecker = () => {
     });
   };
 
+  const logToGoogleSheets = async (data) => {
+    try {
+      // Google Sheets API endpoint
+      const SHEET_ID = '1txSIvvKuQj6bxKkoYqxBPadip9iPTam2G4yLvJRYTRM';
+      const API_KEY = 'YOUR_GOOGLE_API_KEY'; // You'll need to replace this
+      
+      // For now, we'll use a simpler approach via Google Apps Script
+      // This is a more reliable method for client-side integration
+      
+      // Method 1: Google Apps Script Web App (Recommended)
+      const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbykUTK59U9rbShbw9jJyyjQ8SsxW3A8-4mwvMmfVq0/dev'; // You'll need to create this
+      
+      try {
+        const response = await fetch(APPS_SCRIPT_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(data)
+        });
+        
+        if (response.ok) {
+          console.log('Data logged to Google Sheets successfully');
+          return { success: true, method: 'apps_script' };
+        }
+      } catch (appsScriptError) {
+        console.log('Apps Script method failed, trying direct API');
+      }
+      
+      // Method 2: Direct Google Sheets API (requires API key)
+      const range = 'Sheet1!A:M'; // Adjust range as needed
+      const valueInputOption = 'RAW';
+      
+      const values = [[
+        new Date().toISOString(), // Timestamp
+        data.domain || '',
+        data.email || '',
+        data.company || '',
+        data.spf_status || '',
+        data.dkim_status || '',
+        data.dmarc_status || '',
+        data.mx_status || '',
+        data.domain_issues_count || 0,
+        data.list_size || '',
+        data.avg_order_value || '',
+        data.monthly_revenue_loss || '',
+        data.annual_revenue_loss || ''
+      ]];
+      
+      const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${range}:append?valueInputOption=${valueInputOption}&key=${API_KEY}`;
+      
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          values: values
+        })
+      });
+      
+      if (response.ok) {
+        console.log('Data logged to Google Sheets via API');
+        return { success: true, method: 'direct_api' };
+      } else {
+        throw new Error('Google Sheets API failed');
+      }
+      
+    } catch (error) {
+      console.error('Failed to log to Google Sheets:', error);
+      
+      // Fallback: Log to console for manual entry
+      console.log('MANUAL GOOGLE SHEETS ENTRY NEEDED:', data);
+      
+      return { success: false, error: error.message };
+    }
+  };
+
   const checkDNSRecords = async (domain) => {
     const results = [];
     
@@ -158,6 +236,32 @@ const EmailDeliveryChecker = () => {
       displayDomainResults(results);
       setDomainCheckComplete(true);
       
+      // Log domain check to Google Sheets immediately (without email)
+      const domainData = {
+        timestamp: new Date().toISOString(),
+        domain: cleanDomain,
+        email: '', // No email yet
+        company: '',
+        spf_status: issues.includes('SPF Record') ? 'FAIL' : 'PASS',
+        dkim_status: issues.includes('DKIM Record') ? 'FAIL' : 'PASS',
+        dmarc_status: issues.includes('DMARC Record') ? 'FAIL' : 'PASS',
+        mx_status: issues.includes('MX Record') ? 'FAIL' : 'PASS',
+        domain_issues_count: issues.length,
+        list_size: '',
+        avg_order_value: '',
+        open_rate: '',
+        click_rate: '',
+        conversion_rate: '',
+        emails_per_month: '',
+        monthly_revenue_loss: '',
+        annual_revenue_loss: '',
+        list_type: 'domain_check_only',
+        source: 'Email Delivery Checker - Domain Check'
+      };
+      
+      // Log to Google Sheets for retargeting
+      logToGoogleSheets(domainData).catch(console.error);
+      
     } catch (error) {
       console.error('Domain check failed:', error);
       alert(error.message || 'Failed to check domain. Please try again.');
@@ -204,6 +308,23 @@ const EmailDeliveryChecker = () => {
     );
   };
 
+  const calculateMonthlyLoss = (data = calculationData) => {
+    if (!data.listSize) return 0;
+    
+    const currentOpens = (data.listSize * data.emailsPerMonth * data.openRate) / 100;
+    const currentClicks = (currentOpens * data.clickRate) / 100;
+    const currentConversions = (currentClicks * data.conversionRate) / 100;
+    const currentRevenue = currentConversions * data.avgOrderValue;
+
+    const deliverabilityImpact = domainIssues.length > 0 ? 0.35 : 0.15;
+    const improvedOpens = currentOpens * (1 + deliverabilityImpact);
+    const improvedClicks = (improvedOpens * data.clickRate) / 100;
+    const improvedConversions = (improvedClicks * data.conversionRate) / 100;
+    const improvedRevenue = improvedConversions * data.avgOrderValue;
+
+    return improvedRevenue - currentRevenue;
+  };
+
   const calculateImpact = () => {
     const { listSize, avgOrderValue, openRate, clickRate, conversionRate, emailsPerMonth } = formData;
     
@@ -223,6 +344,33 @@ const EmailDeliveryChecker = () => {
 
     setCalculationData(data);
     
+    // Log calculator usage to Google Sheets (even without email)
+    const monthlyLoss = calculateMonthlyLoss(data);
+    const calculatorData = {
+      timestamp: new Date().toISOString(),
+      domain: formData.domain || '',
+      email: '', // No email yet
+      company: '',
+      spf_status: domainResults && domainIssues.includes('SPF Record') ? 'FAIL' : domainResults ? 'PASS' : '',
+      dkim_status: domainResults && domainIssues.includes('DKIM Record') ? 'FAIL' : domainResults ? 'PASS' : '',
+      dmarc_status: domainResults && domainIssues.includes('DMARC Record') ? 'FAIL' : domainResults ? 'PASS' : '',
+      mx_status: domainResults && domainIssues.includes('MX Record') ? 'FAIL' : domainResults ? 'PASS' : '',
+      domain_issues_count: domainIssues.length,
+      list_size: data.listSize,
+      avg_order_value: data.avgOrderValue,
+      open_rate: data.openRate,
+      click_rate: data.clickRate,
+      conversion_rate: data.conversionRate,
+      emails_per_month: data.emailsPerMonth,
+      monthly_revenue_loss: Math.round(monthlyLoss),
+      annual_revenue_loss: Math.round(monthlyLoss * 12),
+      list_type: 'calculator_only',
+      source: 'Email Delivery Checker - Calculator Usage'
+    };
+    
+    // Log to Google Sheets for retargeting
+    logToGoogleSheets(calculatorData).catch(console.error);
+    
     // Show blurred results first
     displayBlurredResults(data);
     
@@ -230,66 +378,9 @@ const EmailDeliveryChecker = () => {
     if (formData.userEmail) {
       displayImpactResults(data);
       setCalculationComplete(true);
-      addToKlaviyo(formData.userEmail, formData.companyName).catch(console.error);
+      addToKlaviyo(formData.userEmail, formData.companyName, 'calculator').catch(console.error);
     }
   };
-
-  const handleEmailSubmit = () => {
-    if (!formData.userEmail) {
-      alert('Please enter your email address');
-      return;
-    }
-
-    // Show full results and add to calculator list
-    displayImpactResults(calculationData);
-    setCalculationComplete(true);
-    addToKlaviyo(formData.userEmail, formData.companyName, 'calculator').catch(console.error);
-  };
-
-  const sendGuide = async () => {
-    if (!formData.userEmail) {
-      alert('Please enter your email address');
-      return;
-    }
-
-    if (!domainCheckComplete && !calculationComplete) {
-      alert('Please run the domain check or calculator first');
-      return;
-    }
-
-    try {
-      // Add to guide request list
-      await addToKlaviyo(formData.userEmail, formData.companyName, 'guide');
-      
-      const reportSummary = generateReportSummary();
-      
-      setEmailCapture(
-        <div className="mt-5 p-5 bg-green-50 border border-green-200 rounded-lg">
-          <h3 className="text-lg font-semibold mb-3">✅ Custom Fix-It Guide Sent!</h3>
-          <p>We've sent a detailed report to <strong>{formData.userEmail}</strong> that includes:</p>
-          <ul className="list-disc pl-6 my-4">
-            <li>📋 Complete analysis of your current email setup</li>
-            <li>🔧 Step-by-step technical instructions to fix each issue</li>
-            <li>💰 Your personalized revenue recovery potential</li>
-            <li>⏱️ Implementation timeline and priority order</li>
-            <li>🎯 Advanced optimization strategies</li>
-          </ul>
-          <p><strong>Check your inbox in the next few minutes!</strong></p>
-          {reportSummary}
-        </div>
-      );
-    } catch (error) {
-      console.error('Error sending results:', error);
-      setEmailCapture(
-        <div className="mt-5 p-5 bg-yellow-50 border border-yellow-200 rounded-lg">
-          <h3 className="text-lg font-semibold mb-3">⚠️ Almost There!</h3>
-          <p>We're processing your request for <strong>{formData.userEmail}</strong>. You should receive your custom fix-it guide shortly.</p>
-        </div>
-      );
-    }
-  };
-
-
 
   const displayBlurredResults = (data) => {
     const currentOpens = (data.listSize * data.emailsPerMonth * data.openRate) / 100;
@@ -466,111 +557,6 @@ const EmailDeliveryChecker = () => {
     );
   };
 
-  const calculateMonthlyLoss = () => {
-    const data = calculationData;
-    const currentOpens = (data.listSize * data.emailsPerMonth * data.openRate) / 100;
-    const currentClicks = (currentOpens * data.clickRate) / 100;
-    const currentConversions = (currentClicks * data.conversionRate) / 100;
-    const currentRevenue = currentConversions * data.avgOrderValue;
-
-    const deliverabilityImpact = domainIssues.length > 0 ? 0.35 : 0.15;
-    const improvedOpens = currentOpens * (1 + deliverabilityImpact);
-    const improvedClicks = (improvedOpens * data.clickRate) / 100;
-    const improvedConversions = (improvedClicks * data.conversionRate) / 100;
-    const improvedRevenue = improvedConversions * data.avgOrderValue;
-
-    return improvedRevenue - currentRevenue;
-  };
-
-  const logToGoogleSheets = async (data) => {
-    try {
-      // Google Sheets API endpoint
-      const SHEET_ID = '1txSIvvKuQj6bxKkoYqxBPadip9iPTam2G4yLvJRYTRM';
-      const API_KEY = 'Google_API_KEY'; // You'll need to replace this
-      
-      // For now, we'll use a simpler approach via Google Apps Script
-      // This is a more reliable method for client-side integration
-      
-      // Method 1: Google Apps Script Web App (Recommended)
-      const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbw04DtLS9aR1Qp5uv9470r9lac5mLe0ywoD7vXptv16dow-DlGWUs4_pM7QPbThthVL/exec'; // You'll need to create this
-      
-      try {
-        const response = await fetch(APPS_SCRIPT_URL, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(data)
-        });
-        
-        if (response.ok) {
-          console.log('Data logged to Google Sheets successfully');
-          return { success: true, method: 'apps_script' };
-        }
-      } catch (appsScriptError) {
-        console.log('Apps Script method failed, trying direct API');
-      }
-      
-      // Method 2: Direct Google Sheets API (requires API key)
-      const range = 'Sheet1!A:M'; // Adjust range as needed
-      const valueInputOption = 'RAW';
-      
-      const values = [[
-        new Date().toISOString(), // Timestamp
-        data.domain || '',
-        data.email || '',
-        data.company || '',
-        data.spf_status || '',
-        data.dkim_status || '',
-        data.dmarc_status || '',
-        data.mx_status || '',
-        data.domain_issues_count || 0,
-        data.list_size || '',
-        data.avg_order_value || '',
-        data.monthly_revenue_loss || '',
-        data.annual_revenue_loss || ''
-      ]];
-      
-      const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${range}:append?valueInputOption=${valueInputOption}&key=${API_KEY}`;
-      
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          values: values
-        })
-      });
-      
-      if (response.ok) {
-        console.log('Data logged to Google Sheets via API');
-        return { success: true, method: 'direct_api' };
-      } else {
-        throw new Error('Google Sheets API failed');
-      }
-      
-    } catch (error) {
-      console.error('Failed to log to Google Sheets:', error);
-      
-      // Fallback: Log to console for manual entry
-      console.log('MANUAL GOOGLE SHEETS ENTRY NEEDED:', data);
-      
-      return { success: false, error: error.message };
-    }
-  };
-    const KLAVIYO_PUBLIC_KEY = 'Mzfpkb';
-    
-    // Different lists for different actions
-    const listUrls = {
-      calculator: 'https://www.klaviyo.com/list/TCapS8',  // Revenue calculator results
-      guide: 'https://www.klaviyo.com/list/U42FCU'        // Fix-it guide requests
-    };
-    
-    const listIds = {
-      calculator: 'TCapS8',
-      guide: 'U42FCU'
-    };
   const addToKlaviyo = async (email, company, listType = 'calculator') => {
     const KLAVIYO_PUBLIC_KEY = 'Mzfpkb';
     
@@ -780,7 +766,19 @@ const EmailDeliveryChecker = () => {
     }
   };
 
-  const sendResults = async () => {
+  const handleEmailSubmit = () => {
+    if (!formData.userEmail) {
+      alert('Please enter your email address');
+      return;
+    }
+
+    // Show full results and add to calculator list
+    displayImpactResults(calculationData);
+    setCalculationComplete(true);
+    addToKlaviyo(formData.userEmail, formData.companyName, 'calculator').catch(console.error);
+  };
+
+  const sendGuide = async () => {
     if (!formData.userEmail) {
       alert('Please enter your email address');
       return;
@@ -792,7 +790,8 @@ const EmailDeliveryChecker = () => {
     }
 
     try {
-      await addToKlaviyo(formData.userEmail, formData.companyName);
+      // Add to guide request list
+      await addToKlaviyo(formData.userEmail, formData.companyName, 'guide');
       
       const reportSummary = generateReportSummary();
       
@@ -823,10 +822,13 @@ const EmailDeliveryChecker = () => {
   };
 
   const scheduleConsultation = () => {
+    const email = formData.userEmail;
+    const company = formData.companyName;
+    
     let urgencyMessage = '';
     if (domainIssues.length > 0 && calculationComplete) {
       const monthlyLoss = calculateMonthlyLoss();
-      urgencyMessage = `⚠️ Urgent: Based on your data, you're losing approximately $${monthlyLoss.toLocaleString()}/month in revenue. Every day you wait costs you money!`;
+      urgencyMessage = `⚠️ Urgent: Based on your data, you're losing approximately ${monthlyLoss.toLocaleString()}/month in revenue. Every day you wait costs you money!`;
     }
     
     setEmailCapture(
@@ -875,7 +877,7 @@ const EmailDeliveryChecker = () => {
     
     if (calculationComplete) {
       const monthlyLoss = calculateMonthlyLoss();
-      summary += `<p><strong>💰 Monthly Revenue Impact:</strong> $${monthlyLoss.toLocaleString()}</p>`;
+      summary += `<p><strong>💰 Monthly Revenue Impact:</strong> ${monthlyLoss.toLocaleString()}</p>`;
     }
     
     summary += '</div>';
