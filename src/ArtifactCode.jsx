@@ -486,7 +486,7 @@ const EmailDeliveryChecker = () => {
     try {
       // Google Sheets API endpoint
       const SHEET_ID = '1txSIvvKuQj6bxKkoYqxBPadip9iPTam2G4yLvJRYTRM';
-      const API_KEY = 'AIzaSyDCIaw_yoxIM-FK0s-mrKpjnSiGi_EYP0k'; // You'll need to replace this
+      const API_KEY = 'Google_API_KEY'; // You'll need to replace this
       
       // For now, we'll use a simpler approach via Google Apps Script
       // This is a more reliable method for client-side integration
